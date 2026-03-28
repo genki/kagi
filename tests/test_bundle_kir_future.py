@@ -54,6 +54,20 @@ class BundleKirFutureTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "python kir executor is still required"):
                 compile_source_v1(frontend_source, source)
 
+    def test_compile_source_v1_canonical_frontend_uses_python_kir_executor(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.selfhost_runtime.execute_kir_entry_v0", wraps=selfhost_runtime.execute_kir_entry_v0) as executor_spy:
+            compiled = compile_source_v1(frontend_source, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(executor_spy.call_count, 1)
+        self.assertEqual(executor_spy.call_args.kwargs["entry"], "pipeline")
+        self.assertEqual(executor_spy.call_args.kwargs["args"], [source])
+        self.assertIs(executor_spy.call_args.kwargs["builtins"], selfhost_runtime.SUBSET_KIR_BUILTINS)
+
     def test_compile_source_v1_still_depends_on_python_bundle_decoder(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -62,6 +76,60 @@ class BundleKirFutureTest(unittest.TestCase):
         with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("python bundle decoder is still required")):
             with self.assertRaisesRegex(AssertionError, "python bundle decoder is still required"):
                 compile_source_v1(frontend_source, source)
+
+    def test_compile_source_v1_canonical_frontend_uses_python_bundle_decoder(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", wraps=parse_selfhost_pipeline_bundle_v1) as bundle_spy:
+            compiled = compile_source_v1(frontend_source, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(bundle_spy.call_count, 1)
+        raw_bundle = bundle_spy.call_args.args[0]
+        self.assertIsInstance(raw_bundle, str)
+        self.assertIn('"kind":"pipeline_bundle"', raw_bundle)
+        self.assertEqual(compiled.metadata.frontend_entry, "pipeline")
+
+    def test_compile_source_v1_canonical_frontend_still_uses_python_string_helpers(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+        helper_names = (
+            "trim",
+            "starts_with",
+            "extract_quoted",
+            "line_count",
+            "line_at",
+            "before_substring",
+            "after_substring",
+            "is_identifier",
+            "concat",
+            "eq",
+        )
+        helper_spies = {
+            name: Mock(wraps=selfhost_runtime.SUBSET_KIR_BUILTINS[name])
+            for name in helper_names
+        }
+
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                **helper_spies,
+            },
+        ):
+            compiled = compile_source_v1(frontend_source, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        for name, spy in helper_spies.items():
+            self.assertGreater(
+                spy.call_count,
+                0,
+                f"{name} is still part of the canonical compile path and blocks a fully self-hosted claim",
+            )
 
     def test_compile_source_v1_canonical_frontend_does_not_call_python_bootstrap_builtins(self):
         root = Path(__file__).resolve().parents[1]
