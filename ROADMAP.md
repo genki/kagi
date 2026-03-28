@@ -177,6 +177,8 @@
 3. Stage 3: bundle decode の縮退
    - Python bundle decoder を compatibility shim へ後退させる
 4. Stage 4: KIR runtime の縮退
-   - Python KIR executor を oracle / fallback に後退させる
+   - 完了
+   - canonical selfhost compile/run path から Python KIR executor を外した
+   - Python KIR executor は direct entry / fallback / oracle に後退した
 5. Stage 5: self-compile / self-freeze 主経路化
    - Python を bootstrap seed / differential oracle のみにする

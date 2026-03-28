@@ -44,24 +44,36 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    def test_compile_source_v1_still_depends_on_python_kir_executor(self):
+    def test_execute_selfhost_frontend_entry_v1_still_depends_on_python_kir_executor(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
         with patch("kagi.selfhost_runtime.execute_kir_entry_v0", side_effect=AssertionError("python kir executor is still required")):
             with self.assertRaisesRegex(AssertionError, "python kir executor is still required"):
-                compile_source_v1(frontend_source, source)
+                selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
 
-    def test_compile_source_v1_canonical_frontend_uses_python_kir_executor(self):
+    def test_compile_source_v1_canonical_frontend_does_not_call_python_kir_executor(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        executor_spy = Mock(side_effect=AssertionError("python kir executor should not be used by canonical compile path"))
+        with patch("kagi.selfhost_runtime.execute_kir_entry_v0", executor_spy):
+            compiled = compile_source_v1(frontend_source, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(executor_spy.call_count, 0)
+
+    def test_execute_selfhost_frontend_entry_v1_canonical_frontend_uses_python_kir_executor(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
         with patch("kagi.selfhost_runtime.execute_kir_entry_v0", wraps=selfhost_runtime.execute_kir_entry_v0) as executor_spy:
-            compiled = compile_source_v1(frontend_source, source)
+            value = selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
 
-        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertIsInstance(value, str)
         self.assertEqual(executor_spy.call_count, 1)
         self.assertEqual(executor_spy.call_args.kwargs["entry"], "pipeline")
         self.assertEqual(executor_spy.call_args.kwargs["args"], [source])

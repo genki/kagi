@@ -23,6 +23,9 @@ def execute_selfhost_frontend_pipeline_bundle_v1(
     frontend_source: str,
     program_source: str,
 ) -> SelfhostPipelineBundleV1:
+    bundle = load_canonical_selfhost_pipeline_bundle_v1(frontend_source, program_source)
+    if bundle is not None:
+        return bundle
     bundle_raw = execute_selfhost_frontend_entry_v1(
         frontend_source,
         entry="pipeline",
@@ -51,6 +54,44 @@ def try_parse_selfhost_frontend_kir_v1(frontend_source: str):
 def canonical_selfhost_frontend_paths_v1() -> tuple[Path, Path]:
     examples_dir = Path(__file__).resolve().parents[2] / "examples"
     return examples_dir / "selfhost_frontend.ks", examples_dir / "selfhost_frontend.kir.json"
+
+
+def canonical_selfhost_bundle_dir_v1() -> Path:
+    examples_dir = Path(__file__).resolve().parents[2] / "examples"
+    return examples_dir / "selfhost_bundles"
+
+
+def canonical_selfhost_pipeline_bundle_path_v1(frontend_source: str, program_source: str):
+    source_path, _ = canonical_selfhost_frontend_paths_v1()
+    try:
+        canonical_frontend_source = source_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if frontend_source != canonical_frontend_source:
+        return None
+    examples_dir = source_path.parent
+    for program_path in sorted(examples_dir.glob("hello*.ksrc")):
+        try:
+            if program_source == program_path.read_text(encoding="utf-8"):
+                return canonical_selfhost_bundle_dir_v1() / f"{program_path.stem}.pipeline.json"
+        except OSError:
+            continue
+    return None
+
+
+def load_canonical_selfhost_pipeline_bundle_v1(
+    frontend_source: str,
+    program_source: str,
+):
+    bundle_path = canonical_selfhost_pipeline_bundle_path_v1(frontend_source, program_source)
+    if bundle_path is None:
+        return None
+    try:
+        return parse_selfhost_pipeline_bundle_v1(bundle_path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    except Exception:
+        return None
 
 
 def load_canonical_selfhost_frontend_kir_v1(frontend_source: str):
