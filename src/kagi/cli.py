@@ -5,11 +5,12 @@ import json
 import sys
 from pathlib import Path
 
+from .capir_runtime import execute_capir_fragment
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string, serialize_capir_fragment
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
-from .selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json, render_tiny_program
+from .selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json
 from .subset import run_subset_program
 
 
@@ -230,14 +231,20 @@ def main() -> None:
             program_source = Path(args.source).read_text(encoding="utf-8")
             ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
             tiny_program = parse_tiny_program_ast_json(ast)
+            capir = lower_tiny_program_to_capir(tiny_program)
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            value = render_tiny_program(tiny_program)
+            value = execute_capir_fragment(capir).output
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
                     "ast": ast,
+                    "capir": {
+                        "effect": capir.effect,
+                        "ops": [{"text": op.text} for op in capir.ops],
+                        "serialized": serialize_capir_fragment(capir),
+                    },
                     "artifact": artifact,
                     "value": value,
                 }

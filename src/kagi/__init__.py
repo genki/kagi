@@ -1,3 +1,4 @@
+from .capir_runtime import CapIRExecutionResult, execute_capir_fragment
 from .diagnostics import Diagnostic, DiagnosticError
 from .frontend import BootstrapProgram, execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import CapIRFragment, CapIRPrint, Action, ProgramIR, action_to_string, serialize_capir_fragment, serialize_program_ir
@@ -18,6 +19,7 @@ from .subset import FunctionDef, SubsetProgram, parse_subset_program, run_subset
 __all__ = [
     "Action",
     "BootstrapProgram",
+    "CapIRExecutionResult",
     "CapIRFragment",
     "CapIRPrint",
     "Cell",
@@ -35,6 +37,7 @@ __all__ = [
     "action_to_string",
     "apply_action",
     "execute_bootstrap_program",
+    "execute_capir_fragment",
     "execute_program_ir",
     "export_owner",
     "lower_tiny_program",

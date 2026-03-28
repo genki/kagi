@@ -4,6 +4,7 @@ import subprocess
 import sys
 import json
 
+from kagi.capir_runtime import execute_capir_fragment
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
@@ -221,6 +222,7 @@ class RuntimeTest(unittest.TestCase):
         capir = lower_tiny_program_to_capir(tiny_program)
         self.assertEqual(capir.effect, "print")
         self.assertEqual(serialize_capir_fragment(capir), 'print "hello, world!"\n')
+        self.assertEqual(execute_capir_fragment(capir).output, "hello, world!")
 
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
@@ -256,6 +258,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "hello, world!")
         self.assertEqual(payload["artifact"], '{"kind":"print","text":"hello, world!"}')
+        self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]

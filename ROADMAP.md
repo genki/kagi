@@ -93,6 +93,7 @@
 - tiny frontend に `parse` を追加し、program AST JSON を返せる
 - Python 側の bridge が AST JSON を typed object として受けられる
 - bridge が typed object を tiny CapIR fragment へ lower できる
+- tiny CapIR fragment を実行する専用 runtime path がある
 
 ## 非目標
 
