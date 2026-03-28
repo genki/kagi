@@ -266,38 +266,54 @@ def builtin_program_text(ast: object) -> str:
 
 
 def parse_print_program_source(text: str) -> dict | None:
-    statements: list[dict[str, str]] = []
+    statements: list[dict] = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        if not line.startswith("print "):
-            return None
-        expr = line[len("print "):].strip()
-        literal = parse_tiny_print_expr(expr)
-        if literal is None:
-            return None
-        statements.append({"kind": "print", "text": literal})
+        if line.startswith("let "):
+            rest = line[len("let "):].strip()
+            if "=" not in rest:
+                return None
+            name, expr = rest.split("=", 1)
+            name = name.strip()
+            if not name or not name.replace("_", "").isalnum():
+                return None
+            parsed_expr = parse_tiny_expr(expr.strip())
+            if parsed_expr is None:
+                return None
+            statements.append({"kind": "let", "name": name, "expr": parsed_expr})
+            continue
+        if line.startswith("print "):
+            expr = line[len("print "):].strip()
+            parsed_expr = parse_tiny_expr(expr)
+            if parsed_expr is None:
+                return None
+            statements.append({"kind": "print", "expr": parsed_expr})
+            continue
+        return None
     if not statements:
         return None
     return {"kind": "program", "statements": statements}
 
 
-def parse_tiny_print_expr(expr: str) -> str | None:
+def parse_tiny_expr(expr: str) -> dict | None:
     expr = expr.strip()
     if expr.startswith('"') and expr.endswith('"') and len(expr) >= 2:
-        return expr[1:-1]
+        return {"kind": "string", "value": expr[1:-1]}
     prefix = 'concat('
     if expr.startswith(prefix) and expr.endswith(')'):
         inner = expr[len(prefix):-1]
         parts = split_concat_args(inner)
         if parts is None or len(parts) != 2:
             return None
-        left = parse_tiny_print_expr(parts[0])
-        right = parse_tiny_print_expr(parts[1])
+        left = parse_tiny_expr(parts[0])
+        right = parse_tiny_expr(parts[1])
         if left is None or right is None:
             return None
-        return left + right
+        return {"kind": "concat", "left": left, "right": right}
+    if expr and expr.replace("_", "").isalnum():
+        return {"kind": "var", "name": expr}
     return None
 
 
@@ -357,10 +373,60 @@ def builtin_validate_program_ast(ast: object) -> str:
     statements = payload.get("statements")
     if not isinstance(statements, list) or len(statements) == 0:
         return "error: invalid program ast"
+    defined: set[str] = set()
     for stmt in statements:
-        if not isinstance(stmt, dict) or stmt.get("kind") != "print" or not isinstance(stmt.get("text"), str):
+        if not isinstance(stmt, dict):
             return "error: invalid program ast"
+        kind = stmt.get("kind")
+        if kind == "let":
+            name = stmt.get("name")
+            if not isinstance(name, str) or not name:
+                return "error: invalid program ast"
+            if validate_tiny_expr(stmt.get("expr"), defined) != "ok":
+                return "error: invalid program ast"
+            defined.add(name)
+            continue
+        if kind == "print":
+            if validate_tiny_expr(stmt.get("expr"), defined) != "ok":
+                return "error: invalid program ast"
+            continue
+        return "error: invalid program ast"
     return "ok"
+
+
+def validate_tiny_expr(expr: object, defined: set[str]) -> str:
+    if not isinstance(expr, dict):
+        return "error"
+    kind = expr.get("kind")
+    if kind == "string":
+        return "ok" if isinstance(expr.get("value"), str) else "error"
+    if kind == "var":
+        name = expr.get("name")
+        return "ok" if isinstance(name, str) and name in defined else "error"
+    if kind == "concat":
+        left_ok = validate_tiny_expr(expr.get("left"), defined)
+        right_ok = validate_tiny_expr(expr.get("right"), defined)
+        return "ok" if left_ok == "ok" and right_ok == "ok" else "error"
+    return "error"
+
+
+def eval_tiny_expr(expr: object, env: dict[str, str]) -> str | None:
+    if not isinstance(expr, dict):
+        return None
+    kind = expr.get("kind")
+    if kind == "string":
+        value = expr.get("value")
+        return value if isinstance(value, str) else None
+    if kind == "var":
+        name = expr.get("name")
+        return env.get(name) if isinstance(name, str) else None
+    if kind == "concat":
+        left = eval_tiny_expr(expr.get("left"), env)
+        right = eval_tiny_expr(expr.get("right"), env)
+        if left is None or right is None:
+            return None
+        return left + right
+    return None
 
 
 def builtin_lower_program_artifact(ast: object) -> str:
@@ -375,11 +441,25 @@ def builtin_lower_program_artifact(ast: object) -> str:
     statements = payload.get("statements")
     if not isinstance(statements, list) or len(statements) == 0:
         return "error: invalid program ast"
+    env: dict[str, str] = {}
     texts: list[str] = []
     for stmt in statements:
-        if not isinstance(stmt, dict) or stmt.get("kind") != "print" or not isinstance(stmt.get("text"), str):
+        if not isinstance(stmt, dict):
             return "error: invalid program ast"
-        texts.append(stmt["text"])
+        kind = stmt.get("kind")
+        if kind == "let":
+            name = stmt.get("name")
+            value = eval_tiny_expr(stmt.get("expr"), env)
+            if not isinstance(name, str) or value is None:
+                return "error: invalid program ast"
+            env[name] = value
+            continue
+        if kind != "print":
+            return "error: invalid program ast"
+        value = eval_tiny_expr(stmt.get("expr"), env)
+        if value is None:
+            return "error: invalid program ast"
+        texts.append(value)
     return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
 
 

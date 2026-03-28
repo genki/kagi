@@ -9,12 +9,38 @@ from .ir import CapIRFragment, CapIRPrint
 
 @dataclass(frozen=True)
 class TinyPrint:
-    text: str
+    expr: "TinyExpr"
+
+
+@dataclass(frozen=True)
+class TinyLet:
+    name: str
+    expr: "TinyExpr"
+
+
+@dataclass(frozen=True)
+class TinyString:
+    value: str
+
+
+@dataclass(frozen=True)
+class TinyConcat:
+    left: "TinyExpr"
+    right: "TinyExpr"
+
+
+@dataclass(frozen=True)
+class TinyVar:
+    name: str
+
+
+TinyExpr = TinyString | TinyConcat | TinyVar
+TinyStmt = TinyLet | TinyPrint
 
 
 @dataclass(frozen=True)
 class TinyProgram:
-    statements: list[TinyPrint]
+    statements: list[TinyStmt]
 
 
 def parse_tiny_program_ast_json(raw: object) -> TinyProgram:
@@ -37,19 +63,60 @@ def parse_tiny_program_ast_json(raw: object) -> TinyProgram:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "program ast requires statements")
         )
-    statements: list[TinyPrint] = []
+    statements: list[TinyStmt] = []
     for stmt in statements_raw:
-        if not isinstance(stmt, dict) or stmt.get("kind") != "print":
-            raise DiagnosticError(
-                diagnostic_from_runtime_error("selfhost-bridge", "unsupported statement in program ast")
-            )
-        text = stmt.get("text")
-        if not isinstance(text, str):
-            raise DiagnosticError(
-                diagnostic_from_runtime_error("selfhost-bridge", "print statement requires string text")
-            )
-        statements.append(TinyPrint(text=text))
+        statements.append(parse_tiny_stmt(stmt))
     return TinyProgram(statements=statements)
+
+
+def parse_tiny_stmt(stmt: object) -> TinyStmt:
+    if not isinstance(stmt, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "statement must be an object")
+        )
+    kind = stmt.get("kind")
+    if kind == "let":
+        name = stmt.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "let statement requires name")
+            )
+        return TinyLet(name=name, expr=parse_tiny_expr(stmt.get("expr")))
+    if kind == "print":
+        return TinyPrint(expr=parse_tiny_expr(stmt.get("expr")))
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("selfhost-bridge", "unsupported statement in program ast")
+    )
+
+
+def parse_tiny_expr(expr: object) -> TinyExpr:
+    if not isinstance(expr, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "expression must be an object")
+        )
+    kind = expr.get("kind")
+    if kind == "string":
+        value = expr.get("value")
+        if not isinstance(value, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "string expression requires value")
+            )
+        return TinyString(value=value)
+    if kind == "var":
+        name = expr.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "var expression requires name")
+            )
+        return TinyVar(name=name)
+    if kind == "concat":
+        return TinyConcat(
+            left=parse_tiny_expr(expr.get("left")),
+            right=parse_tiny_expr(expr.get("right")),
+        )
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("selfhost-bridge", "unsupported expression in program ast")
+    )
 
 
 def lower_tiny_program(program: TinyProgram) -> str:
@@ -63,7 +130,23 @@ def lower_tiny_program_to_capir(program: TinyProgram) -> CapIRFragment:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one statement")
         )
-    return CapIRFragment(effect="print", ops=[CapIRPrint(text=stmt.text) for stmt in program.statements])
+    env: dict[str, str] = {}
+    ops: list[CapIRPrint] = []
+    for stmt in program.statements:
+        if isinstance(stmt, TinyLet):
+            env[stmt.name] = eval_tiny_expr(stmt.expr, env)
+            continue
+        if isinstance(stmt, TinyPrint):
+            ops.append(CapIRPrint(text=eval_tiny_expr(stmt.expr, env)))
+            continue
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "unsupported tiny statement")
+        )
+    if len(ops) == 0:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one print")
+        )
+    return CapIRFragment(effect="print", ops=ops)
 
 
 def render_tiny_program(program: TinyProgram) -> str:
@@ -71,7 +154,23 @@ def render_tiny_program(program: TinyProgram) -> str:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one statement")
         )
-    return "\n".join(stmt.text for stmt in program.statements)
+    return "\n".join(op.text for op in lower_tiny_program_to_capir(program).ops)
+
+
+def eval_tiny_expr(expr: TinyExpr, env: dict[str, str]) -> str:
+    if isinstance(expr, TinyString):
+        return expr.value
+    if isinstance(expr, TinyVar):
+        if expr.name not in env:
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", f"unknown variable: {expr.name}")
+            )
+        return env[expr.name]
+    if isinstance(expr, TinyConcat):
+        return eval_tiny_expr(expr.left, env) + eval_tiny_expr(expr.right, env)
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("selfhost-bridge", "unsupported tiny expression")
+    )
 
 
 def render_print_artifact(artifact: object) -> str:

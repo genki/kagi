@@ -46,7 +46,7 @@ self-hosting 用の最小 subset を追加しています。
 ## Self-Hosted Front Half
 
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
-いまは `print "..."` 文を受け付ける極小言語を対象にしています。複数行の `print` 文と、`print concat("a","b")` のような最小式を処理できます。
+いまは `print "..."` 文を受け付ける極小言語を対象にしています。複数行の `print` 文、`print concat("a","b")` のような最小式、`let x = ...` と `print x` を処理できます。
 
 Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す AST JSON を typed bridge object に変換します。
 さらに bridge は `TinyProgram -> CapIR fragment` の lowering を持ち、`src/kagi/capir_runtime.py` が tiny fragment を実行します。
