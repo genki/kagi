@@ -10,15 +10,31 @@ import kagi
 from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
+    capir_fragment_from_kir_program,
     execute_and_inspect_capir_artifact,
     execute_capir_artifact,
     execute_capir_fragment,
+    execute_kir_program as execute_kir_program_result,
     inspect_capir_artifact,
+    kir_program_to_artifact,
 )
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
-from kagi.kir import inspect_kir_artifact, kir_program_from_print_artifact, serialize_kir_program_v0
+from kagi.kir import (
+    KIRCallV0,
+    KIRConcatV0,
+    KIRFunctionV0,
+    KIRLetV0,
+    KIRPrintV0,
+    KIRProgramV0,
+    KIRReturnV0,
+    KIRStringV0,
+    KIRVarV0,
+    inspect_kir_artifact,
+    kir_program_from_print_artifact,
+    serialize_kir_program_v0,
+)
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 import kagi.subset as subset_module
 from kagi.subset import parse_subset_program, run_subset_program, run_subset_program_via_kir
@@ -33,6 +49,7 @@ from kagi.runtime import (
     well_formed,
 )
 from kagi.ir import Action
+from kagi.kir_runtime import execute_kir_program_v0
 
 
 class RuntimeTest(unittest.TestCase):
@@ -233,6 +250,44 @@ class RuntimeTest(unittest.TestCase):
         actual = run_subset_program_via_kir(frontend, entry="pipeline", args=[source])
 
         self.assertEqual(json.loads(actual), json.loads(expected))
+
+    def test_kagi_subset_module_exports_run_subset_program_via_kir(self):
+        self.assertTrue(callable(run_subset_program_via_kir))
+
+    def test_kir_program_to_artifact_rejects_non_print_only_program(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRLetV0(name="greeting", expr=KIRStringV0(value="hello")),
+                KIRReturnV0(expr=KIRStringV0(value="bye")),
+            ]
+        )
+        with self.assertRaises(DiagnosticError):
+            kir_program_to_artifact(program)
+        with self.assertRaises(DiagnosticError):
+            capir_fragment_from_kir_program(program)
+
+    def test_execute_kir_program_helper_matches_runtime_for_richer_kir(self):
+        program = KIRProgramV0(
+            instructions=[KIRCallV0(name="emit_suffix", args=[KIRStringV0(value="hello, world")])],
+            functions=[
+                KIRFunctionV0(
+                    name="emit_suffix",
+                    params=["name"],
+                    body=[
+                        KIRLetV0(name="suffix", expr=KIRStringV0(value="!")),
+                        KIRPrintV0(
+                            expr=KIRConcatV0(
+                                left=KIRVarV0(name="name"),
+                                right=KIRVarV0(name="suffix"),
+                            )
+                        ),
+                    ],
+                )
+            ],
+        )
+        expected = execute_kir_program_v0(program, builtins=subset_module.BUILTINS).output
+        actual = execute_kir_program_result(program).output
+        self.assertEqual(actual, expected)
 
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """
