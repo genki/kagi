@@ -43,24 +43,35 @@ self-hosting 用の最小 subset を追加しています。
 - `extract_quoted`
 - `trim`
 
-## Self-Hosted Hello World
+## Self-Hosted Front Half
 
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
-`examples/hello.ksrc` を入力にすると、quoted text を取り出して返します。
+いまは `print "..."` だけを受け付ける極小言語を対象にしています。
+
+役割は 3 つに分けています。
+
+- `check(source)`:
+  - tiny source を受理できるか判定する
+- `lower(source)`:
+  - tiny source から artifact を作る
+- `compile(source)`:
+  - 現在は `lower(source)` の alias
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+kagi selfhost-check --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
+kagi selfhost-emit --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 ```
 
-期待値:
+期待値の例:
 
 ```json
 {
   "ok": true,
-  "entry": "compile",
+  "entry": "lower",
   "source": "/home/vagrant/kagi/examples/hello.ksrc",
-  "value": "hello, world!"
+  "artifact": "emit:hello, world!"
 }
 ```
 

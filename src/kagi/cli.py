@@ -116,6 +116,18 @@ def main() -> None:
     selfhost_run_parser.add_argument("--entry", default="compile")
     add_json_flag(selfhost_run_parser)
 
+    selfhost_check_parser = subparsers.add_parser("selfhost-check")
+    selfhost_check_parser.add_argument("frontend")
+    selfhost_check_parser.add_argument("source")
+    selfhost_check_parser.add_argument("--entry", default="check")
+    add_json_flag(selfhost_check_parser)
+
+    selfhost_emit_parser = subparsers.add_parser("selfhost-emit")
+    selfhost_emit_parser.add_argument("frontend")
+    selfhost_emit_parser.add_argument("source")
+    selfhost_emit_parser.add_argument("--entry", default="lower")
+    add_json_flag(selfhost_emit_parser)
+
     args = parser.parse_args()
     if args.command == "run":
         try:
@@ -212,6 +224,49 @@ def main() -> None:
                     "value": value,
                 }
             )
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-check":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            program_source = Path(args.source).read_text(encoding="utf-8")
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ok = value == "ok"
+            emit_payload(
+                {
+                    "ok": ok,
+                    "entry": args.entry,
+                    "source": str(args.source),
+                    "value": value,
+                }
+            )
+            if not ok:
+                raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-emit":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            program_source = Path(args.source).read_text(encoding="utf-8")
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            emit_payload(
+                {
+                    "ok": not str(value).startswith("error:"),
+                    "entry": args.entry,
+                    "source": str(args.source),
+                    "artifact": value,
+                }
+            )
+            if str(value).startswith("error:"):
+                raise SystemExit(1)
+        except SystemExit:
+            raise
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return
