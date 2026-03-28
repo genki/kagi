@@ -8,6 +8,7 @@ from kagi.artifact import PrintArtifactV1
 from kagi.compile_result import compile_source_v1
 from kagi.hir import lower_surface_program_to_hir_v1
 from kagi.kir import KIRPrintV0, KIRProgramV0, KIRStringV0, serialize_kir_program_v0
+from kagi.selfhost_analysis import SelfhostAnalysisV1
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 from kagi.surface_ast import parse_surface_program_v1
 
@@ -23,12 +24,14 @@ class BundleKirFutureTest(unittest.TestCase):
         bundle = SimpleNamespace(
             raw_ast='{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]}',
             raw_hir='{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]}',
+            raw_analysis='{"kind":"analysis_v1","function_arities":{},"effects":{"program":["print"],"functions":{}}}',
             raw_check="ok",
             raw_artifact='{"kind":"print_many","texts":["hello"]}',
             raw_compile='{"kind":"print_many","texts":["hello"]}',
             surface_ast=surface_ast,
             hir=hir,
             kir=kir,
+            analysis=SelfhostAnalysisV1(function_arities={}, program_effects=["print"], function_effects={}),
             artifact=PrintArtifactV1(texts=["hello"]),
             compile_artifact=PrintArtifactV1(texts=["hello"]),
         )
@@ -78,6 +81,11 @@ class BundleKirFutureTest(unittest.TestCase):
                     ],
                 },
                 "kir": json.loads(serialize_kir_program_v0(kir)),
+                "analysis": {
+                    "kind": "analysis_v1",
+                    "function_arities": {},
+                    "effects": {"program": ["print"], "functions": {}},
+                },
                 "check": "ok",
                 "artifact": {"kind": "print_many", "texts": ["hello"]},
                 "compile": {"kind": "print_many", "texts": ["hello"]},

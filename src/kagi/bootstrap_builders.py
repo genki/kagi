@@ -6,7 +6,11 @@ from .diagnostics import DiagnosticError
 from .hir import hir_program_v1_to_json, lower_surface_program_to_hir_v1
 from .kir import serialize_kir_program_v0
 from .lower_hir_to_kir import lower_hir_program_to_kir_v0
+from .resolve import resolve_hir_program_v1
+from .effects import infer_effects_v1
+from .selfhost_analysis import SelfhostAnalysisV1, selfhost_analysis_v1_to_json
 from .surface_ast import parse_surface_program_v1
+from .typecheck import typecheck_program_v1
 
 def builtin_print_ast(text: object) -> str:
     if not isinstance(text, str):
@@ -353,12 +357,35 @@ def builtin_hir_to_kir(hir_raw: object) -> str:
     return serialize_kir_program_v0(kir)
 
 
+def builtin_hir_to_analysis(hir_raw: object) -> str:
+    if not isinstance(hir_raw, str):
+        return ""
+    try:
+        from .hir import parse_hir_program_v1
+
+        hir = parse_hir_program_v1(hir_raw)
+        resolved = resolve_hir_program_v1(hir)
+        typed = typecheck_program_v1(resolved)
+        effects = infer_effects_v1(resolved)
+        _ = typed
+    except DiagnosticError:
+        return ""
+    return selfhost_analysis_v1_to_json(
+        SelfhostAnalysisV1(
+            function_arities=resolved.function_arities,
+            program_effects=effects.program_effects,
+            function_effects=effects.function_effects,
+        )
+    )
+
+
 BOOTSTRAP_BUILTINS = {
     "print_ast": builtin_print_ast,
     "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
     "program_ast_to_hir": builtin_program_ast_to_hir,
     "hir_to_kir": builtin_hir_to_kir,
+    "hir_to_analysis": builtin_hir_to_analysis,
     "program_if_expr_print_ast": builtin_program_if_expr_print_ast,
     "program_if_stmt_ast": builtin_program_if_stmt_ast,
     "program_print_concat_ast": builtin_program_print_concat_ast,

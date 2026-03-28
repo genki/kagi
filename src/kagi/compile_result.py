@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 from .artifact import PrintArtifactV1, artifact_v1_stdout
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
-from .effects import EffectSummaryV1, infer_effects_v1
-from .hir import HIRProgramV1, lower_surface_program_to_hir_v1
+from .effects import EffectSummaryV1
+from .hir import HIRProgramV1
 from .kir import KIRProgramV1
-from .resolve import ResolvedProgramV1, resolve_hir_program_v1
+from .resolve import ResolvedProgramV1
 from .selfhost_bundle import parse_selfhost_pipeline_bundle_v1
 from .selfhost_runtime import execute_selfhost_frontend_entry_v1
 from .surface_ast import SurfaceProgramV1
-from .typecheck import TypecheckedProgramV1, typecheck_program_v1
+from .typecheck import TypecheckedProgramV1
 
 
 @dataclass(frozen=True)
@@ -66,9 +66,12 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
     surface_ast = bundle.surface_ast
 
     hir = bundle.hir
-    resolved = resolve_hir_program_v1(hir)
-    typed = typecheck_program_v1(resolved)
-    effects = infer_effects_v1(resolved)
+    resolved = ResolvedProgramV1(program=hir, function_arities=bundle.analysis.function_arities)
+    typed = TypecheckedProgramV1(program=hir)
+    effects = EffectSummaryV1(
+        program_effects=bundle.analysis.program_effects,
+        function_effects=bundle.analysis.function_effects,
+    )
 
     lower_artifact = bundle.artifact
     compile_artifact = bundle.compile_artifact

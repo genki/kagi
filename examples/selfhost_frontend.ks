@@ -1049,7 +1049,7 @@ fn build_print_many_json_2(text1, text2) {
   );
 }
 
-fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, artifact_json) {
+fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, analysis_json, artifact_json) {
   return concat(
     "{\"kind\":\"pipeline_bundle\",\"ast\":",
     concat(
@@ -1063,8 +1063,14 @@ fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, artifact_json) {
             concat(
               kir_json,
               concat(
-                ",\"check\":\"ok\",\"artifact\":",
-                concat(artifact_json, concat(",\"compile\":", concat(artifact_json, "}")))
+                ",\"analysis\":",
+                concat(
+                  analysis_json,
+                  concat(
+                    ",\"check\":\"ok\",\"artifact\":",
+                    concat(artifact_json, concat(",\"compile\":", concat(artifact_json, "}")))
+                  )
+                )
               )
             )
           )
@@ -2189,6 +2195,20 @@ fn kir(source) {
   }
 }
 
+fn analysis(source) {
+  let hir_json = hir(source);
+  if starts_with(hir_json, "error:") {
+    return hir_json;
+  } else {
+    let analysis_json = hir_to_analysis(hir_json);
+    if eq(analysis_json, "") {
+      return "error: unsupported source";
+    } else {
+      return analysis_json;
+    }
+  }
+}
+
 fn compile(source) {
   return lower(source);
 }
@@ -2206,11 +2226,16 @@ fn pipeline(source) {
       if starts_with(kir_json, "error:") {
         return kir_json;
       } else {
-        let artifact = lower(source);
-        if starts_with(artifact, "error:") {
-          return artifact;
+        let analysis_json = analysis(source);
+        if starts_with(analysis_json, "error:") {
+          return analysis_json;
         } else {
-          return build_pipeline_bundle_json(ast, hir_json, kir_json, artifact);
+          let artifact = lower(source);
+          if starts_with(artifact, "error:") {
+            return artifact;
+          } else {
+            return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+          }
         }
       }
     }

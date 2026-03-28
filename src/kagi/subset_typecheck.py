@@ -29,6 +29,7 @@ BUILTIN_SIGNATURES: dict[str, BuiltinSignatureV0] = {
     "ends_with": BuiltinSignatureV0(("string", "string"), "bool"),
     "extract_quoted": BuiltinSignatureV0(("string",), "string"),
     "hir_to_kir": BuiltinSignatureV0(("string",), "string"),
+    "hir_to_analysis": BuiltinSignatureV0(("string",), "string"),
     "is_identifier": BuiltinSignatureV0(("string",), "bool"),
     "line_at": BuiltinSignatureV0(("string", "int"), "string"),
     "line_count": BuiltinSignatureV0(("string",), "int"),
