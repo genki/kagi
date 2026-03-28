@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .artifact import PrintArtifactV1, parse_artifact_v1
+from .artifact import PrintArtifactV1, artifact_v1_stdout, parse_artifact_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .ir import CapIRFragment, CapIRPrint, serialize_capir_fragment
 from .kir import (
@@ -71,7 +71,10 @@ def inspect_kir_artifact(artifact: object) -> dict[str, object]:
         program = kir_program_from_artifact(artifact)
     payload = inspect_kir_program_v0(program)
     payload["serialized"] = serialize_kir_program_v0(program)
-    payload["stdout"] = execute_kir_program_v0(program).output
+    try:
+        payload["stdout"] = artifact_v1_stdout(kir_program_to_artifact(program))
+    except DiagnosticError:
+        payload["stdout"] = execute_kir_program_v0(program).output
     return payload
 
 
@@ -92,11 +95,15 @@ def capir_fragment_from_kir_program(program: KIRProgramV0) -> CapIRFragment:
 
 
 def execute_kir_program(program: KIRProgramV0) -> KIRExecutionResult:
-    return KIRExecutionResult(output=execute_kir_program_v0(program).output)
+    try:
+        return KIRExecutionResult(output=artifact_v1_stdout(kir_program_to_artifact(program)))
+    except DiagnosticError:
+        return KIRExecutionResult(output=execute_kir_program_v0(program).output)
 
 
 def execute_capir_artifact(artifact: object) -> CapIRExecutionResult:
-    return CapIRExecutionResult(output=execute_kir_program_v0(kir_program_from_artifact(artifact)).output)
+    parsed = parse_artifact_v1(artifact)
+    return CapIRExecutionResult(output=artifact_v1_stdout(parsed))
 
 
 def execute_capir_fragment(fragment: CapIRFragment) -> CapIRExecutionResult:
@@ -104,5 +111,5 @@ def execute_capir_fragment(fragment: CapIRFragment) -> CapIRExecutionResult:
         raise DiagnosticError(
             diagnostic_from_runtime_error("capir-runtime", f"unsupported effect: {fragment.effect}")
         )
-    program = kir_program_from_print_artifact(PrintArtifactV1(texts=[op.text for op in fragment.ops]))
-    return CapIRExecutionResult(output=execute_kir_program_v0(program).output)
+    artifact = PrintArtifactV1(texts=[op.text for op in fragment.ops])
+    return CapIRExecutionResult(output=artifact_v1_stdout(artifact))

@@ -292,6 +292,12 @@ class RuntimeTest(unittest.TestCase):
         actual = execute_kir_program_result(program).output
         self.assertEqual(actual, expected)
 
+    def test_execute_kir_program_helper_does_not_call_python_kir_runtime_for_print_program(self):
+        program = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))], functions=[])
+        with patch("kagi.capir_runtime.execute_kir_program_v0", side_effect=AssertionError("capir helper should not use python kir runtime")):
+            actual = execute_kir_program_result(program).output
+        self.assertEqual(actual, "hello")
+
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """
         fn main() {
