@@ -127,7 +127,9 @@
 - `kir-v0` を追加
   - `kir.py`
   - `kir_runtime.py`
-  - selfhost run path を print-only artifact から KIR へ載せ替える
+  - `lower_hir_to_kir.py`
+  - selfhost run path を print-only artifact から executable KIR へ載せ替える
+  - current tiny language の `let / print / if / call` を KIR で実行できる
 
 ## 非目標
 

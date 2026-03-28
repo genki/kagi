@@ -53,12 +53,13 @@ front half には最小の静的パスも追加しています。
 
 ## KIR v0
 
-`selfhost-run` の実行層として、print-only の最小 KIR scaffold を置いています。
+`selfhost-run` の実行層として、print-only scaffold から始め、現在は tiny selfhost current-shape を実行できる KIR v0 を置いています。
 
 - 定義: `src/kagi/kir.py`
 - runtime: `src/kagi/kir_runtime.py`
-- selfhost の `LowerArtifactV1` は KIR を持つ
-- `selfhost-run` は `pipeline -> KIR -> stdout` を通る
+- selfhost の `LowerArtifactV1` は HIR から lower された executable KIR を持つ
+- current tiny language の `let / print / if / call / return` を KIR runtime で実行できる
+- `selfhost-run` は `pipeline -> HIR -> KIR -> stdout` を通る
 
 ## Diagnostics
 

@@ -968,7 +968,8 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.compile_artifact.texts, ["hello, world!"])
         self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
-        self.assertEqual([op.text for op in compiled.lower.kir.instructions], ["hello, world!"])
+        self.assertEqual(compiled.lower.kir.functions[0].name, "emit_suffix")
+        self.assertEqual(inspect_kir_artifact(compiled.lower.kir)["instructions"][0]["op"], "call")
         self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
 
     def test_compile_source_v1_uses_pipeline_entry_only(self):

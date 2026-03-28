@@ -6,7 +6,8 @@ from .artifact import PrintArtifactV1, artifact_v1_stdout
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .effects import EffectSummaryV1, infer_effects_v1
 from .hir import HIRProgramV1, lower_surface_program_to_hir_v1
-from .kir import KIRProgramV1, kir_program_from_print_artifact
+from .kir import KIRProgramV1
+from .lower_hir_to_kir import lower_hir_program_to_kir_v0
 from .resolve import ResolvedProgramV1, resolve_hir_program_v1
 from .selfhost_bundle import parse_selfhost_pipeline_bundle_v1
 from .subset import run_subset_program
@@ -64,8 +65,8 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
 
     lower_artifact = bundle.artifact
     compile_artifact = bundle.compile_artifact
-    lower_kir = kir_program_from_print_artifact(lower_artifact)
-    compile_kir = kir_program_from_print_artifact(compile_artifact)
+    lower_kir = lower_hir_program_to_kir_v0(hir)
+    compile_kir = lower_hir_program_to_kir_v0(hir)
 
     return CompileResultV1(
         parse=ParseArtifactV1(raw_ast=bundle.raw_ast, surface_ast=surface_ast),
