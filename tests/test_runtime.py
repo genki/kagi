@@ -1,4 +1,5 @@
 import unittest
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
@@ -925,6 +926,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(hasattr(kagi, "execute_capir_artifact"))
         self.assertTrue(hasattr(kagi, "inspect_capir_artifact"))
         self.assertFalse(hasattr(kagi, "parse_tiny_program_ast_json"))
+        self.assertIsNone(importlib.util.find_spec("kagi.selfhost"))
 
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]
