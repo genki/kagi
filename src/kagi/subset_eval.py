@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from .diagnostics import Diagnostic, DiagnosticError
 from .bootstrap_builders import BOOTSTRAP_BUILTINS
+from .kir_runtime import execute_kir_entry_v0
+from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, lower_subset_program_to_kir_v0
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnSignal, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
 from .subset_builtins import CORE_BUILTINS
 
@@ -26,6 +28,14 @@ def run_subset_program(source: str, *, entry: str, args: list[object]) -> object
             )
         )
     return eval_function(functions, functions[entry], args)
+
+
+def run_subset_program_via_kir(source: str, *, entry: str, args: list[object]) -> object:
+    from .subset_parser import parse_subset_program
+
+    program = parse_subset_program(source)
+    kir = lower_subset_program_to_kir_v0(program)
+    return execute_kir_entry_v0(kir, entry=entry, args=list(args), builtins=SUBSET_KIR_BUILTINS)
 
 
 def eval_function(functions: dict[str, FunctionDef], fn: FunctionDef, args: list[object]) -> object:

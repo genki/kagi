@@ -44,6 +44,15 @@ from .bootstrap_builders import (
     builtin_program_two_prints_ast,
     builtin_program_zero_arg_fn_call_ast,
 )
-from .subset_eval import BUILTINS, eval_block, eval_expr, eval_function, eval_stmt, run_subset_program, truthy
+from .subset_eval import (
+    BUILTINS,
+    eval_block,
+    eval_expr,
+    eval_function,
+    eval_stmt,
+    run_subset_program,
+    run_subset_program_via_kir,
+    truthy,
+)
 from .subset_lexer import KEYWORDS, Token, tokenize
 from .subset_parser import Parser, parse_subset_program

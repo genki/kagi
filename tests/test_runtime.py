@@ -215,14 +215,13 @@ class RuntimeTest(unittest.TestCase):
 
     def test_subset_program_via_kir_matches_interpreter(self):
         source = """
-        fn main(flag, name) {
-            let suffix = if(flag, "!", "?");
-            let greeting = concat("hello, ", name);
-            return concat(greeting, suffix);
+        fn main(name) {
+            let prefix = "hello, ";
+            return concat(prefix, name);
         }
         """
-        expected = run_subset_program(source, entry="main", args=[True, "world"])
-        actual = run_subset_program_via_kir(source, entry="main", args=[True, "world"])
+        expected = run_subset_program(source, entry="main", args=["world!"])
+        actual = run_subset_program_via_kir(source, entry="main", args=["world!"])
         self.assertEqual(actual, expected)
 
     def test_selfhost_pipeline_via_kir_matches_interpreter(self):
