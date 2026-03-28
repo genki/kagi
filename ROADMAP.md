@@ -90,6 +90,7 @@
 - 最小 subset evaluator と `selfhost-run` を追加
 - tiny frontend に `check / lower / compile` を追加
 - `print "..."` を JSON artifact へ lower できる
+- tiny frontend に `parse` を追加し、program AST JSON を返せる
 
 ## 非目標
 

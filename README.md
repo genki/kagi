@@ -50,15 +50,18 @@ self-hosting 用の最小 subset を追加しています。
 
 役割は 3 つに分けています。
 
+- `parse(source)`:
+  - tiny source から最小 program AST JSON を作る
 - `check(source)`:
   - tiny source を受理できるか判定する
 - `lower(source)`:
-  - tiny source から最小 JSON artifact を作る
+  - program AST を経由して最小 JSON artifact を作る
 - `compile(source)`:
   - 現在は `lower(source)` の alias
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+kagi selfhost-parse --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-check --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-emit --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc

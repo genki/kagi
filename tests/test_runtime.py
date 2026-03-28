@@ -202,8 +202,15 @@ class RuntimeTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        checked = run_subset_program(frontend, entry="check", args=[source])
         lowered = run_subset_program(frontend, entry="lower", args=[source])
         compiled = run_subset_program(frontend, entry="compile", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {"kind": "program", "statements": [{"kind": "print", "text": "hello, world!"}]},
+        )
+        self.assertEqual(checked, "ok")
         self.assertEqual(json.loads(lowered), {"kind": "print", "text": "hello, world!"})
         self.assertEqual(json.loads(compiled), {"kind": "print", "text": "hello, world!"})
 
@@ -211,8 +218,10 @@ class RuntimeTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         invalid = (root / "examples" / "hello_invalid.ksrc").read_text(encoding="utf-8")
+        parsed = run_subset_program(frontend, entry="parse", args=[invalid])
         checked = run_subset_program(frontend, entry="check", args=[invalid])
         lowered = run_subset_program(frontend, entry="lower", args=[invalid])
+        self.assertEqual(parsed, "error: expected quoted string")
         self.assertEqual(checked, "error: expected quoted string")
         self.assertEqual(lowered, "error: expected quoted string")
 
@@ -242,6 +251,22 @@ class RuntimeTest(unittest.TestCase):
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]
+        parse_proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-parse",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         check_proc = subprocess.run(
             [
                 sys.executable,
@@ -291,14 +316,17 @@ class RuntimeTest(unittest.TestCase):
             check=False,
         )
 
+        self.assertEqual(parse_proc.returncode, 0)
         self.assertEqual(check_proc.returncode, 0)
         self.assertEqual(emit_proc.returncode, 0)
         self.assertEqual(invalid_proc.returncode, 1)
 
+        parse_payload = __import__("json").loads(parse_proc.stdout)
         check_payload = __import__("json").loads(check_proc.stdout)
         emit_payload = __import__("json").loads(emit_proc.stdout)
         invalid_payload = __import__("json").loads(invalid_proc.stdout)
 
+        self.assertEqual(parse_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
         self.assertEqual(check_payload["value"], "ok")
         self.assertEqual(emit_payload["artifact"], '{"kind":"print","text":"hello, world!"}')
         self.assertFalse(invalid_payload["ok"])

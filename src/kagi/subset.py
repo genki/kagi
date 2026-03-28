@@ -236,11 +236,42 @@ def builtin_print_ast(text: object) -> str:
     return json.dumps({"kind": "print", "text": text}, ensure_ascii=False, separators=(",", ":"))
 
 
+def builtin_program_ast(text: object) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    return json.dumps(
+        {"kind": "program", "statements": [{"kind": "print", "text": text}]},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def builtin_program_text(ast: object) -> str:
+    if not isinstance(ast, str):
+        return ""
+    try:
+        payload = json.loads(ast)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict) or payload.get("kind") != "program":
+        return ""
+    statements = payload.get("statements")
+    if not isinstance(statements, list) or len(statements) != 1:
+        return ""
+    stmt = statements[0]
+    if not isinstance(stmt, dict) or stmt.get("kind") != "print":
+        return ""
+    text = stmt.get("text")
+    return text if isinstance(text, str) else ""
+
+
 BUILTINS = {
     "eq": builtin_eq,
     "concat": builtin_concat,
     "extract_quoted": builtin_extract_quoted,
     "print_ast": builtin_print_ast,
+    "program_ast": builtin_program_ast,
+    "program_text": builtin_program_text,
     "trim": builtin_trim,
 }
 

@@ -149,6 +149,12 @@ def main() -> None:
     selfhost_check_parser.add_argument("--entry", default="check")
     add_json_flag(selfhost_check_parser)
 
+    selfhost_parse_parser = subparsers.add_parser("selfhost-parse")
+    selfhost_parse_parser.add_argument("frontend")
+    selfhost_parse_parser.add_argument("source")
+    selfhost_parse_parser.add_argument("--entry", default="parse")
+    add_json_flag(selfhost_parse_parser)
+
     selfhost_emit_parser = subparsers.add_parser("selfhost-emit")
     selfhost_emit_parser.add_argument("frontend")
     selfhost_emit_parser.add_argument("source")
@@ -269,6 +275,28 @@ def main() -> None:
                     "entry": args.entry,
                     "source": str(args.source),
                     "value": value,
+                }
+            )
+            if not ok:
+                raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-parse":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            program_source = Path(args.source).read_text(encoding="utf-8")
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ok = not str(value).startswith("error:")
+            emit_payload(
+                {
+                    "ok": ok,
+                    "entry": args.entry,
+                    "source": str(args.source),
+                    "ast": value,
                 }
             )
             if not ok:
