@@ -14,6 +14,17 @@
 
 この境界を self-hosting 前の固定足場として扱います。
 
+## Diagnostics
+
+CLI では `--json` を受け付け、失敗時は構造化診断を返します。
+
+- `phase`
+- `code`
+- `message`
+- `line`
+- `column`
+- `snippet`
+
 ## 対応範囲
 
 - owner / cell / heap

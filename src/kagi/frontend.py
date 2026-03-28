@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .diagnostics import Diagnostic, DiagnosticError, diagnostic_from_runtime_error
 from .ir import Action, ProgramIR
 from .runtime import (
     Cell,
@@ -24,6 +25,28 @@ class BootstrapProgram:
     program: ProgramIR
     owner_ids: dict[str, int]
     assertions: list[tuple[int, ExportAssertion]]
+
+
+def fail_parse(
+    *,
+    source: str,
+    lineno: int,
+    raw_line: str,
+    code: str,
+    message: str,
+    column: int | None = None,
+) -> "DiagnosticError":
+    snippet = source.splitlines()[lineno - 1] if source.splitlines() else raw_line
+    return DiagnosticError(
+        Diagnostic(
+            phase="parse",
+            code=code,
+            message=message,
+            line=lineno,
+            column=column or 1,
+            snippet=snippet,
+        )
+    )
 
 
 def parse_core_program(source: str) -> ProgramIR:
@@ -60,13 +83,36 @@ def parse_core_program(source: str) -> ProgramIR:
             if head == "drop":
                 actions.append(Action("drop", int(parts[1])))
                 continue
-        except (IndexError, ValueError) as exc:
-            raise KagiRuntimeError(f"parse error on line {lineno}: {raw_line}") from exc
+        except DiagnosticError:
+            raise
+        except (IndexError, ValueError, KagiRuntimeError) as exc:
+            raise fail_parse(
+                source=source,
+                lineno=lineno,
+                raw_line=raw_line,
+                code="parse_error",
+                message=f"parse error on line {lineno}: {raw_line}",
+            ) from exc
 
-        raise KagiRuntimeError(f"unknown statement on line {lineno}: {raw_line}")
+        raise fail_parse(
+            source=source,
+            lineno=lineno,
+            raw_line=raw_line,
+            code="unknown_statement",
+            message=f"unknown statement on line {lineno}: {raw_line}",
+        )
 
     if not well_formed(heap):
-        raise KagiRuntimeError("initial heap is not well-formed")
+        raise DiagnosticError(
+            Diagnostic(
+                phase="parse",
+                code="initial_heap_not_well_formed",
+                message="initial heap is not well-formed",
+                line=None,
+                column=None,
+                snippet=None,
+            )
+        )
 
     return ProgramIR(heap=heap, actions=actions)
 
@@ -91,14 +137,26 @@ def parse_bootstrap_program(source: str) -> BootstrapProgram:
                 kind = parts[1]
                 name = parts[2]
                 if parts[3] != "=":
-                    raise KagiRuntimeError("expected '=' in let binding")
+                    raise fail_parse(
+                        source=source,
+                        lineno=lineno,
+                        raw_line=raw_line,
+                        code="expected_equals",
+                        message="expected '=' in let binding",
+                    )
                 value = int(parts[4])
                 if kind == "key":
                     key_values[name] = value
                 elif kind == "epoch":
                     epoch_values[name] = value
                 else:
-                    raise KagiRuntimeError(f"unknown let kind: {kind}")
+                    raise fail_parse(
+                        source=source,
+                        lineno=lineno,
+                        raw_line=raw_line,
+                        code="unknown_let_kind",
+                        message=f"unknown let kind: {kind}",
+                    )
                 continue
 
             if head == "owner":
@@ -112,7 +170,13 @@ def parse_bootstrap_program(source: str) -> BootstrapProgram:
             if head == "assert_export":
                 owner_name = parts[1]
                 if owner_name not in owner_ids:
-                    raise KagiRuntimeError(f"unknown owner in assertion: {owner_name}")
+                    raise fail_parse(
+                        source=source,
+                        lineno=lineno,
+                        raw_line=raw_line,
+                        code="unknown_owner_in_assertion",
+                        message=f"unknown owner in assertion: {owner_name}",
+                    )
                 expected = normalize_export(parts[2:], epoch_values)
                 assertions.append((len(actions), ExportAssertion(owner_name=owner_name, expected=expected)))
                 continue
@@ -120,7 +184,13 @@ def parse_bootstrap_program(source: str) -> BootstrapProgram:
             if head in {"borrow_mut", "end_mut", "borrow_shared", "end_shared", "drop"}:
                 owner_name = parts[1]
                 if owner_name not in owner_ids:
-                    raise KagiRuntimeError(f"unknown owner: {owner_name}")
+                    raise fail_parse(
+                        source=source,
+                        lineno=lineno,
+                        raw_line=raw_line,
+                        code="unknown_owner",
+                        message=f"unknown owner: {owner_name}",
+                    )
                 owner_id = owner_ids[owner_name]
                 if head == "drop":
                     actions.append(Action(head, owner_id))
@@ -128,13 +198,36 @@ def parse_bootstrap_program(source: str) -> BootstrapProgram:
                 value = parse_named_value(head, parts[2], key_values, epoch_values)
                 actions.append(Action(head, owner_id, value))
                 continue
-        except (IndexError, ValueError) as exc:
-            raise KagiRuntimeError(f"parse error on line {lineno}: {raw_line}") from exc
+        except DiagnosticError:
+            raise
+        except (IndexError, ValueError, KagiRuntimeError) as exc:
+            raise fail_parse(
+                source=source,
+                lineno=lineno,
+                raw_line=raw_line,
+                code="parse_error",
+                message=f"parse error on line {lineno}: {raw_line}",
+            ) from exc
 
-        raise KagiRuntimeError(f"unknown statement on line {lineno}: {raw_line}")
+        raise fail_parse(
+            source=source,
+            lineno=lineno,
+            raw_line=raw_line,
+            code="unknown_statement",
+            message=f"unknown statement on line {lineno}: {raw_line}",
+        )
 
     if not well_formed(heap):
-        raise KagiRuntimeError("initial heap is not well-formed")
+        raise DiagnosticError(
+            Diagnostic(
+                phase="parse",
+                code="initial_heap_not_well_formed",
+                message="initial heap is not well-formed",
+                line=None,
+                column=None,
+                snippet=None,
+            )
+        )
 
     return BootstrapProgram(
         program=ProgramIR(heap=heap, actions=actions),
@@ -199,7 +292,10 @@ def normalize_export(tokens: list[str], epoch_values: dict[str, int]) -> str:
 
 def execute_bootstrap_program(source: str):
     program = parse_bootstrap_program(source)
-    result = execute_program_ir(program.program)
+    try:
+        result = execute_program_ir(program.program)
+    except KagiRuntimeError as exc:
+        raise DiagnosticError(diagnostic_from_runtime_error("runtime", str(exc))) from exc
 
     for index, heap in enumerate(result.trace[1:], start=1):
         for assertion_index, assertion in program.assertions:
@@ -208,7 +304,17 @@ def execute_bootstrap_program(source: str):
             owner_id = program.owner_ids[assertion.owner_name]
             actual = heap[owner_id].loan.export()
             if actual != assertion.expected:
-                raise KagiRuntimeError(
-                    f"assert_export failed for {assertion.owner_name}: expected {assertion.expected}, got {actual}"
+                raise DiagnosticError(
+                    Diagnostic(
+                        phase="assert",
+                        code="assert_export_failed",
+                        message=(
+                            f"assert_export failed for {assertion.owner_name}: "
+                            f"expected {assertion.expected}, got {actual}"
+                        ),
+                        line=None,
+                        column=None,
+                        snippet=None,
+                    )
                 )
     return result

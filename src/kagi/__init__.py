@@ -1,3 +1,4 @@
+from .diagnostics import Diagnostic, DiagnosticError
 from .frontend import BootstrapProgram, execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import Action, ProgramIR, action_to_string, serialize_program_ir
 from .runtime import (
@@ -16,6 +17,8 @@ __all__ = [
     "Action",
     "BootstrapProgram",
     "Cell",
+    "Diagnostic",
+    "DiagnosticError",
     "ExecutionResult",
     "Heap",
     "KagiRuntimeError",

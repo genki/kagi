@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
+from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
-from .runtime import ExecutionResult, execute_program_ir, export_owner, well_formed
+from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
 
 
 def heap_to_json(result: ExecutionResult) -> dict:
@@ -41,82 +43,138 @@ def trace_to_json(result: ExecutionResult) -> dict:
     return {"steps": steps}
 
 
+def add_json_flag(command_parser: argparse.ArgumentParser) -> None:
+    command_parser.add_argument("--json", action="store_true")
+
+
+def emit_payload(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
+    if isinstance(exc, DiagnosticError):
+        diagnostic = exc.diagnostic
+    elif isinstance(exc, KagiRuntimeError):
+        diagnostic = diagnostic_from_runtime_error(phase, str(exc))
+    else:
+        diagnostic = diagnostic_from_runtime_error(phase, str(exc))
+
+    if use_json:
+        emit_payload({"ok": False, "diagnostic": diagnostic.to_json()})
+        raise SystemExit(1)
+
+    location = ""
+    if diagnostic.line is not None:
+        location = f"{diagnostic.line}:{diagnostic.column or 1}: "
+    print(
+        f"{diagnostic.phase}:{diagnostic.code}: {location}{diagnostic.message}",
+        file=sys.stderr,
+    )
+    if diagnostic.snippet:
+        print(diagnostic.snippet, file=sys.stderr)
+    raise SystemExit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="kagi")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("file")
+    add_json_flag(run_parser)
 
     trace_parser = subparsers.add_parser("trace")
     trace_parser.add_argument("file")
+    add_json_flag(trace_parser)
 
     check_parser = subparsers.add_parser("check")
     check_parser.add_argument("file")
+    add_json_flag(check_parser)
 
     exports_parser = subparsers.add_parser("exports")
     exports_parser.add_argument("file")
+    add_json_flag(exports_parser)
 
     bootstrap_parser = subparsers.add_parser("bootstrap-check")
     bootstrap_parser.add_argument("file")
+    add_json_flag(bootstrap_parser)
 
     bootstrap_trace_parser = subparsers.add_parser("bootstrap-trace")
     bootstrap_trace_parser.add_argument("file")
+    add_json_flag(bootstrap_trace_parser)
 
     args = parser.parse_args()
     if args.command == "run":
-        source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program_ir(parse_core_program(source))
-        print(json.dumps(heap_to_json(result), ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            result = execute_program_ir(parse_core_program(source))
+            emit_payload(heap_to_json(result))
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
     if args.command == "trace":
-        source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program_ir(parse_core_program(source))
-        print(json.dumps(trace_to_json(result), ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            result = execute_program_ir(parse_core_program(source))
+            emit_payload(trace_to_json(result))
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
     if args.command == "check":
-        source = Path(args.file).read_text(encoding="utf-8")
-        program = parse_core_program(source)
-        result = execute_program_ir(program)
-        payload = {
-            "ok": True,
-            "initial_well_formed": well_formed(program.heap),
-            "action_count": len(program.actions),
-            "final_well_formed": well_formed(result.heap),
-        }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            program = parse_core_program(source)
+            result = execute_program_ir(program)
+            payload = {
+                "ok": True,
+                "initial_well_formed": well_formed(program.heap),
+                "action_count": len(program.actions),
+                "final_well_formed": well_formed(result.heap),
+            }
+            emit_payload(payload)
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
     if args.command == "exports":
-        source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program_ir(parse_core_program(source))
-        payload = {
-            str(owner): export_owner(result.heap, owner)
-            for owner in sorted(result.heap.keys())
-        }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            result = execute_program_ir(parse_core_program(source))
+            payload = {
+                str(owner): export_owner(result.heap, owner)
+                for owner in sorted(result.heap.keys())
+            }
+            emit_payload(payload)
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
     if args.command == "bootstrap-check":
-        source = Path(args.file).read_text(encoding="utf-8")
-        program = parse_bootstrap_program(source)
-        result = execute_bootstrap_program(source)
-        payload = {
-            "ok": True,
-            "owners": sorted(program.owner_ids.keys()),
-            "action_count": len(program.program.actions),
-            "assertion_count": len(program.assertions),
-            "final_well_formed": well_formed(result.heap),
-        }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            program = parse_bootstrap_program(source)
+            result = execute_bootstrap_program(source)
+            payload = {
+                "ok": True,
+                "owners": sorted(program.owner_ids.keys()),
+                "action_count": len(program.program.actions),
+                "assertion_count": len(program.assertions),
+                "final_well_formed": well_formed(result.heap),
+            }
+            emit_payload(payload)
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
     if args.command == "bootstrap-trace":
-        source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_bootstrap_program(source)
-        print(json.dumps(trace_to_json(result), ensure_ascii=False, indent=2))
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            result = execute_bootstrap_program(source)
+            emit_payload(trace_to_json(result))
+        except Exception as exc:
+            emit_diagnostic(exc, phase="runtime", use_json=args.json)
         return
 
 

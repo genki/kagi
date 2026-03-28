@@ -1,6 +1,9 @@
 import unittest
 from pathlib import Path
+import subprocess
+import sys
 
+from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_program_ir
 from kagi.runtime import (
@@ -130,6 +133,56 @@ class RuntimeTest(unittest.TestCase):
             """
         )
         self.assertEqual(export_owner(result.heap, 0), "shared 9")
+
+    def test_core_parse_error_exposes_structured_diagnostic(self):
+        with self.assertRaises(DiagnosticError) as ctx:
+            parse_core_program(
+                """
+                owner 0 alive idle
+                borrow_mut nope
+                """
+            )
+        diagnostic = ctx.exception.diagnostic
+        self.assertEqual(diagnostic.phase, "parse")
+        self.assertEqual(diagnostic.code, "parse_error")
+        self.assertEqual(diagnostic.line, 3)
+        self.assertEqual(diagnostic.snippet.strip(), "borrow_mut nope")
+
+    def test_bootstrap_assertion_failure_exposes_structured_diagnostic(self):
+        with self.assertRaises(DiagnosticError) as ctx:
+            execute_bootstrap_program(
+                """
+                let epoch e0 = 9
+                owner cell alive idle
+                borrow_shared cell e0
+                assert_export cell idle
+                """
+            )
+        diagnostic = ctx.exception.diagnostic
+        self.assertEqual(diagnostic.phase, "assert")
+        self.assertEqual(diagnostic.code, "assert_export_failed")
+
+    def test_cli_json_error_format_is_structured(self):
+        root = Path(__file__).resolve().parents[1]
+        invalid = root / "tests" / "_invalid_parse.kagi"
+        invalid.write_text("owner 0 alive idle\nborrow_mut nope\n", encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "kagi.cli", "check", "--json", str(invalid)],
+                cwd=root,
+                env={"PYTHONPATH": str(root / "src")},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            invalid.unlink(missing_ok=True)
+
+        self.assertEqual(proc.returncode, 1)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["diagnostic"]["phase"], "parse")
+        self.assertEqual(payload["diagnostic"]["code"], "parse_error")
 
 
 if __name__ == "__main__":
