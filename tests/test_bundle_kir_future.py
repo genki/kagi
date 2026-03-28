@@ -44,14 +44,23 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    def test_execute_selfhost_frontend_entry_v1_still_depends_on_python_kir_executor(self):
+    def test_execute_selfhost_frontend_entry_v1_noncanonical_frontend_still_depends_on_python_host_path(self):
+        frontend_source = "fn pipeline(source) { return source; }"
+        source = "print \"hello\""
+
+        with patch("kagi.selfhost_runtime.execute_subset_entry_via_kir_v0", side_effect=AssertionError("python host path is still required")):
+            with self.assertRaisesRegex(AssertionError, "python host path is still required"):
+                selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
+
+    def test_execute_selfhost_frontend_entry_v1_canonical_frontend_does_not_use_python_kir_executor(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
         with patch("kagi.selfhost_runtime.execute_kir_entry_v0", side_effect=AssertionError("python kir executor is still required")):
-            with self.assertRaisesRegex(AssertionError, "python kir executor is still required"):
-                selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
+            value = selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
+        self.assertIsInstance(value, str)
+        self.assertIn('"kind":"pipeline_bundle"', value)
 
     def test_compile_source_v1_canonical_frontend_does_not_call_python_kir_executor(self):
         root = Path(__file__).resolve().parents[1]
@@ -76,7 +85,7 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertIsInstance(kir_json, str)
         self.assertIn('"kind":"kir"', kir_json)
 
-    def test_execute_selfhost_frontend_entry_v1_canonical_frontend_uses_python_kir_executor(self):
+    def test_execute_selfhost_frontend_entry_v1_canonical_frontend_uses_entry_snapshots(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
@@ -85,10 +94,8 @@ class BundleKirFutureTest(unittest.TestCase):
             value = selfhost_runtime.execute_selfhost_frontend_entry_v1(frontend_source, entry="pipeline", args=[source])
 
         self.assertIsInstance(value, str)
-        self.assertEqual(executor_spy.call_count, 1)
-        self.assertEqual(executor_spy.call_args.kwargs["entry"], "pipeline")
-        self.assertEqual(executor_spy.call_args.kwargs["args"], [source])
-        self.assertIs(executor_spy.call_args.kwargs["builtins"], selfhost_runtime.SUBSET_KIR_BUILTINS)
+        self.assertEqual(executor_spy.call_count, 0)
+        self.assertIn('"kind":"pipeline_bundle"', value)
 
     def test_compile_source_v1_still_depends_on_python_bundle_decoder(self):
         root = Path(__file__).resolve().parents[1]

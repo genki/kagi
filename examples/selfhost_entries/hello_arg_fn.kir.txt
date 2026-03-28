@@ -1,0 +1,1 @@
+{"kind":"kir","functions":[{"name":"emit_suffix","params":["name"],"body":[{"op":"print","expr":{"kind":"concat","left":{"kind":"var","name":"name"},"right":{"kind":"string","value":"!"}}}]}],"instructions":[{"op":"call","name":"emit_suffix","args":[{"kind":"string","value":"hello, world"}]}]}

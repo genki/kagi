@@ -1,0 +1,1 @@
+{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}

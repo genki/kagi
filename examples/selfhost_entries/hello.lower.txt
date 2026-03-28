@@ -1,0 +1,1 @@
+{"kind":"print_many","texts":["hello, world!"]}

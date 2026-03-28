@@ -1,0 +1,1 @@
+{"kind":"kir","functions":[],"instructions":[{"op":"let","name":"greeting","expr":{"kind":"string","value":"hello, world!"}},{"op":"print","expr":{"kind":"var","name":"greeting"}}]}

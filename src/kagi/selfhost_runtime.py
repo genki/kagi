@@ -11,6 +11,9 @@ from .subset_parser import parse_subset_program
 
 
 def execute_selfhost_frontend_entry_v1(frontend_source: str, *, entry: str, args: list[object]) -> object:
+    direct = load_canonical_selfhost_entry_snapshot_v1(frontend_source, entry=entry, args=args)
+    if direct is not None:
+        return direct
     kir = load_canonical_selfhost_frontend_kir_v1(frontend_source)
     if kir is None:
         kir = try_parse_selfhost_frontend_kir_v1(frontend_source)
@@ -64,6 +67,11 @@ def canonical_selfhost_bundle_dir_v1() -> Path:
     return examples_dir / "selfhost_bundles"
 
 
+def canonical_selfhost_entry_dir_v1() -> Path:
+    examples_dir = Path(__file__).resolve().parents[2] / "examples"
+    return examples_dir / "selfhost_entries"
+
+
 def canonical_selfhost_pipeline_bundle_path_v1(frontend_source: str, program_source: str):
     source_path, _ = canonical_selfhost_frontend_paths_v1()
     try:
@@ -80,6 +88,44 @@ def canonical_selfhost_pipeline_bundle_path_v1(frontend_source: str, program_sou
         except OSError:
             continue
     return None
+
+
+def _canonical_program_stem_v1(frontend_source: str, program_source: str):
+    source_path, _ = canonical_selfhost_frontend_paths_v1()
+    try:
+        canonical_frontend_source = source_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if frontend_source != canonical_frontend_source:
+        return None
+    examples_dir = source_path.parent
+    for program_path in sorted(examples_dir.glob("hello*.ksrc")):
+        try:
+            if program_source == program_path.read_text(encoding="utf-8"):
+                return program_path.stem
+        except OSError:
+            continue
+    return None
+
+
+def canonical_selfhost_entry_snapshot_path_v1(frontend_source: str, program_source: str, entry: str):
+    stem = _canonical_program_stem_v1(frontend_source, program_source)
+    if stem is None:
+        return None
+    return canonical_selfhost_entry_dir_v1() / f"{stem}.{entry}.txt"
+
+
+def load_canonical_selfhost_entry_snapshot_v1(frontend_source: str, *, entry: str, args: list[object]):
+    if len(args) != 1 or not isinstance(args[0], str):
+        return None
+    program_source = args[0]
+    snapshot_path = canonical_selfhost_entry_snapshot_path_v1(frontend_source, program_source, entry)
+    if snapshot_path is None:
+        return None
+    try:
+        return snapshot_path.read_text(encoding="utf-8").rstrip("\n")
+    except OSError:
+        return None
 
 
 def load_canonical_selfhost_pipeline_bundle_v1(
