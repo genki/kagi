@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
+from .ir import CapIRFragment, CapIRPrint
 
 
 @dataclass(frozen=True)
@@ -52,12 +53,22 @@ def parse_tiny_program_ast_json(raw: object) -> TinyProgram:
 
 
 def lower_tiny_program(program: TinyProgram) -> str:
+    fragment = lower_tiny_program_to_capir(program)
+    if len(fragment.ops) != 1:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "only single-op tiny capir fragments are supported")
+        )
+    stmt = fragment.ops[0]
+    return json.dumps({"kind": "print", "text": stmt.text}, ensure_ascii=False, separators=(",", ":"))
+
+
+def lower_tiny_program_to_capir(program: TinyProgram) -> CapIRFragment:
     if len(program.statements) != 1:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "only single-statement tiny programs are supported")
         )
     stmt = program.statements[0]
-    return json.dumps({"kind": "print", "text": stmt.text}, ensure_ascii=False, separators=(",", ":"))
+    return CapIRFragment(effect="print", ops=[CapIRPrint(text=stmt.text)])
 
 
 def render_tiny_program(program: TinyProgram) -> str:

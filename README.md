@@ -49,6 +49,7 @@ self-hosting 用の最小 subset を追加しています。
 いまは `print "..."` だけを受け付ける極小言語を対象にしています。
 
 Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す AST JSON を typed bridge object に変換します。
+さらに bridge は `TinyProgram -> CapIR fragment` の lowering を持ちます。
 
 役割は 3 つに分けています。
 
@@ -65,6 +66,7 @@ Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す
 export PATH="$HOME/.local/bin:$PATH"
 kagi selfhost-parse --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-check --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
+kagi selfhost-capir --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-emit --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 ```
@@ -74,10 +76,14 @@ kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/
 ```json
 {
   "ok": true,
-  "entry": "lower",
+  "entry": "parse",
   "source": "/home/vagrant/kagi/examples/hello.ksrc",
   "ast": "{\"kind\":\"program\",\"statements\":[{\"kind\":\"print\",\"text\":\"hello, world!\"}]}",
-  "artifact": "{\"kind\":\"print\",\"text\":\"hello, world!\"}"
+  "capir": {
+    "effect": "print",
+    "ops": [{"text":"hello, world!"}],
+    "serialized": "print \"hello, world!\"\n"
+  }
 }
 ```
 

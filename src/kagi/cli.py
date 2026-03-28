@@ -7,9 +7,9 @@ from pathlib import Path
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
-from .ir import action_to_string
+from .ir import action_to_string, serialize_capir_fragment
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
-from .selfhost import lower_tiny_program, parse_tiny_program_ast_json, render_tiny_program
+from .selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json, render_tiny_program
 from .subset import run_subset_program
 
 
@@ -134,6 +134,12 @@ def main() -> None:
     selfhost_emit_parser.add_argument("source")
     selfhost_emit_parser.add_argument("--entry", default="lower")
     add_json_flag(selfhost_emit_parser)
+
+    selfhost_capir_parser = subparsers.add_parser("selfhost-capir")
+    selfhost_capir_parser.add_argument("frontend")
+    selfhost_capir_parser.add_argument("source")
+    selfhost_capir_parser.add_argument("--entry", default="parse")
+    add_json_flag(selfhost_capir_parser)
 
     args = parser.parse_args()
     if args.command == "run":
@@ -314,6 +320,44 @@ def main() -> None:
             )
             if not ok:
                 raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-capir":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            program_source = Path(args.source).read_text(encoding="utf-8")
+            ast = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            if isinstance(ast, str) and ast.startswith("error:"):
+                emit_payload(
+                    {
+                        "ok": False,
+                        "entry": args.entry,
+                        "source": str(args.source),
+                        "ast": None,
+                        "capir": None,
+                        "message": ast,
+                    }
+                )
+                raise SystemExit(1)
+            tiny_program = parse_tiny_program_ast_json(ast)
+            capir = lower_tiny_program_to_capir(tiny_program)
+            emit_payload(
+                {
+                    "ok": True,
+                    "entry": args.entry,
+                    "source": str(args.source),
+                    "ast": ast,
+                    "capir": {
+                        "effect": capir.effect,
+                        "ops": [{"text": op.text} for op in capir.ops],
+                        "serialized": serialize_capir_fragment(capir),
+                    },
+                }
+            )
         except SystemExit:
             raise
         except Exception as exc:

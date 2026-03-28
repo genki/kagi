@@ -6,8 +6,8 @@ import json
 
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
-from kagi.ir import serialize_program_ir
-from kagi.selfhost import lower_tiny_program, parse_tiny_program_ast_json, render_tiny_program
+from kagi.ir import serialize_capir_fragment, serialize_program_ir
+from kagi.selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json, render_tiny_program
 from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
     Cell,
@@ -218,6 +218,9 @@ class RuntimeTest(unittest.TestCase):
         tiny_program = parse_tiny_program_ast_json(ast)
         self.assertEqual(lower_tiny_program(tiny_program), lowered)
         self.assertEqual(render_tiny_program(tiny_program), "hello, world!")
+        capir = lower_tiny_program_to_capir(tiny_program)
+        self.assertEqual(capir.effect, "print")
+        self.assertEqual(serialize_capir_fragment(capir), 'print "hello, world!"\n')
 
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
@@ -320,15 +323,33 @@ class RuntimeTest(unittest.TestCase):
             text=True,
             check=False,
         )
+        capir_proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-capir",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
         self.assertEqual(parse_proc.returncode, 0)
         self.assertEqual(check_proc.returncode, 0)
         self.assertEqual(emit_proc.returncode, 0)
+        self.assertEqual(capir_proc.returncode, 0)
         self.assertEqual(invalid_proc.returncode, 1)
 
         parse_payload = __import__("json").loads(parse_proc.stdout)
         check_payload = __import__("json").loads(check_proc.stdout)
         emit_payload = __import__("json").loads(emit_proc.stdout)
+        capir_payload = __import__("json").loads(capir_proc.stdout)
         invalid_payload = __import__("json").loads(invalid_proc.stdout)
 
         self.assertEqual(parse_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
@@ -336,6 +357,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(emit_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
         self.assertEqual(check_payload["value"], "ok")
         self.assertEqual(emit_payload["artifact"], '{"kind":"print","text":"hello, world!"}')
+        self.assertEqual(capir_payload["capir"]["serialized"], 'print "hello, world!"\n')
         self.assertFalse(invalid_payload["ok"])
         self.assertEqual(invalid_payload["value"], "error: expected quoted string")
 

@@ -20,6 +20,17 @@ class ProgramIR:
     actions: list[Action]
 
 
+@dataclass(frozen=True)
+class CapIRPrint:
+    text: str
+
+
+@dataclass(frozen=True)
+class CapIRFragment:
+    effect: Literal["print"]
+    ops: list[CapIRPrint]
+
+
 def action_to_string(action: Action) -> str:
     if action.value is None:
         return f"{action.kind} {action.owner}"
@@ -45,3 +56,9 @@ def serialize_program_ir(program: ProgramIR) -> str:
         lines.append(action_to_string(action))
 
     return "\n".join(lines) + ("\n" if lines else "")
+
+
+def serialize_capir_fragment(fragment: CapIRFragment) -> str:
+    if fragment.effect != "print":
+        raise ValueError(f"unsupported fragment effect: {fragment.effect}")
+    return "\n".join(f'print "{op.text}"' for op in fragment.ops) + ("\n" if fragment.ops else "")
