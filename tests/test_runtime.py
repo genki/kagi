@@ -4,7 +4,7 @@ import subprocess
 import sys
 import json
 
-from kagi.capir_runtime import execute_capir_fragment
+from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_fragment
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
@@ -308,6 +308,13 @@ class RuntimeTest(unittest.TestCase):
             },
         )
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
+    def test_capir_fragment_can_be_recovered_from_selfhost_artifact(self):
+        artifact = '{"kind":"print_many","texts":["hello","world"]}'
+        fragment = capir_fragment_from_artifact(artifact)
+        self.assertEqual(fragment.effect, "print")
+        self.assertEqual([op.text for op in fragment.ops], ["hello", "world"])
+        self.assertEqual(execute_capir_fragment(fragment).output, "hello\nworld")
 
     def test_selfhost_frontend_supports_if_and_eq_expression(self):
         root = Path(__file__).resolve().parents[1]

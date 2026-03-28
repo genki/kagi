@@ -5,12 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-from .capir_runtime import execute_capir_fragment
+from .capir_runtime import capir_fragment_from_artifact, execute_capir_fragment
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string, serialize_capir_fragment
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
-from .selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json
+from .selfhost import lower_tiny_program_to_capir, parse_tiny_program_ast_json
 from .subset import run_subset_program
 
 
@@ -234,9 +234,8 @@ def main() -> None:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
             ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
-            tiny_program = parse_tiny_program_ast_json(ast)
-            capir = lower_tiny_program_to_capir(tiny_program)
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            capir = capir_fragment_from_artifact(artifact)
             value = execute_capir_fragment(capir).output
             if args.json:
                 emit_payload(
@@ -320,9 +319,9 @@ def main() -> None:
                 value = ast
                 ok = False
             else:
-                tiny_program = parse_tiny_program_ast_json(ast)
                 value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-                ok = value == lower_tiny_program(tiny_program)
+                capir = capir_fragment_from_artifact(value)
+                ok = execute_capir_fragment(capir).output is not None
             emit_payload(
                 {
                     "ok": ok,

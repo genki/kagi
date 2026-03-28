@@ -62,6 +62,8 @@ Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す
 - `compile(source)`:
   - 現在は `lower(source)` の alias
 
+`selfhost-run` は compile の返す artifact をそのまま実行します。以前のように AST から横で再 lower するのではなく、compiler output を主経路として扱います。
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 kagi selfhost-parse --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
