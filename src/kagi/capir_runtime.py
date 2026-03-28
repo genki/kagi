@@ -51,6 +51,11 @@ def capir_fragment_from_artifact(artifact: object) -> CapIRFragment:
     )
 
 
+def execute_capir_artifact(artifact: object) -> CapIRExecutionResult:
+    fragment = capir_fragment_from_artifact(artifact)
+    return execute_capir_fragment(fragment)
+
+
 def execute_capir_fragment(fragment: CapIRFragment) -> CapIRExecutionResult:
     if fragment.effect != "print":
         raise DiagnosticError(

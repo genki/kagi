@@ -4,7 +4,7 @@ import subprocess
 import sys
 import json
 
-from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_fragment
+from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artifact, execute_capir_fragment
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
@@ -518,6 +518,10 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual([op.text for op in fragment.ops], ["hello", "world"])
         self.assertEqual(execute_capir_fragment(fragment).output, "hello\nworld")
 
+    def test_capir_artifact_can_be_executed_directly(self):
+        artifact = '{"kind":"print_many","texts":["hello","world"]}'
+        self.assertEqual(execute_capir_artifact(artifact).output, "hello\nworld")
+
     def test_selfhost_frontend_supports_if_and_eq_expression(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -903,6 +907,13 @@ class RuntimeTest(unittest.TestCase):
         finally:
             subset_module.BUILTINS.clear()
             subset_module.BUILTINS.update(saved_builtins)
+
+    def test_selfhost_frontend_source_no_longer_references_legacy_parse_check_lower_builtins(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        self.assertNotIn("parse_print_program", frontend)
+        self.assertNotIn("validate_program_ast", frontend)
+        self.assertNotIn("lower_program_artifact", frontend)
 
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]

@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .capir_runtime import capir_fragment_from_artifact, execute_capir_fragment
+from .capir_runtime import capir_fragment_from_artifact, execute_capir_artifact
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string, serialize_capir_fragment
@@ -236,7 +236,7 @@ def main() -> None:
             ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
             capir = capir_fragment_from_artifact(artifact)
-            value = execute_capir_fragment(capir).output
+            value = execute_capir_artifact(artifact).output
             if args.json:
                 emit_payload(
                     {
@@ -320,8 +320,7 @@ def main() -> None:
                 ok = False
             else:
                 value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-                capir = capir_fragment_from_artifact(value)
-                ok = execute_capir_fragment(capir).output is not None
+                ok = execute_capir_artifact(value).output is not None
             emit_payload(
                 {
                     "ok": ok,
