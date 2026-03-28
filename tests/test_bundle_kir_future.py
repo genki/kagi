@@ -80,6 +80,97 @@ class BundleKirFutureTest(unittest.TestCase):
                 self.assertEqual(analysis_spy.call_count, 0)
                 self.assertEqual(compiled.stdout, "hello, world!")
 
+    def test_compile_source_v1_canonical_frontend_examples_do_not_call_python_bootstrap_builders(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        cases = {
+            "hello.ksrc": "hello, world!",
+            "hello_print_concat.ksrc": "hello, world!",
+            "hello_let_string.ksrc": "hello, world!",
+            "hello_let_concat.ksrc": "hello, world!",
+            "hello_twice.ksrc": "hello\nworld",
+            "hello_fn.ksrc": "hello, world!",
+            "hello_arg_fn.ksrc": "hello, world!",
+            "hello_if.ksrc": "hello, world!",
+            "hello_if_stmt.ksrc": "hello, world!",
+        }
+        forbidden_builder_names = (
+            "print_ast",
+            "program_ast",
+            "program_if_expr_print_ast",
+            "program_if_stmt_ast",
+            "program_print_concat_ast",
+            "program_let_concat_print_ast",
+            "program_single_arg_fn_call_ast",
+            "program_let_print_ast",
+            "program_two_prints_ast",
+            "program_text",
+            "program_zero_arg_fn_call_ast",
+            "program_ast_to_hir",
+            "hir_to_kir",
+            "hir_to_analysis",
+        )
+        forbidden_builtins = {
+            name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical bundle path"))
+            for name in forbidden_builder_names
+        }
+
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                **forbidden_builtins,
+            },
+        ):
+            for filename, expected_stdout in cases.items():
+                with self.subTest(case=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    compiled = compile_source_v1(frontend_source, source)
+                    self.assertEqual(compiled.stdout, expected_stdout)
+
+        for name, spy in forbidden_builtins.items():
+            self.assertEqual(spy.call_count, 0, name)
+
+    def test_canonical_frontend_entries_do_not_call_python_bootstrap_builtins(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        cases = {
+            "hello.ksrc": ("hir", "kir", "analysis"),
+            "hello_if.ksrc": ("hir", "kir", "analysis"),
+            "hello_fn.ksrc": ("hir", "kir", "analysis"),
+            "hello_arg_fn.ksrc": ("hir", "kir", "analysis"),
+        }
+
+        for filename, entries in cases.items():
+            for entry in entries:
+                with self.subTest(case=filename, entry=entry):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    ast_spy = Mock(side_effect=builtin_program_ast_to_hir)
+                    kir_spy = Mock(side_effect=builtin_hir_to_kir)
+                    analysis_spy = Mock(side_effect=builtin_hir_to_analysis)
+                    with patch.object(
+                        selfhost_runtime,
+                        "SUBSET_KIR_BUILTINS",
+                        {
+                            **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                            "program_ast_to_hir": ast_spy,
+                            "hir_to_kir": kir_spy,
+                            "hir_to_analysis": analysis_spy,
+                        },
+                    ):
+                        value = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                            frontend_source,
+                            entry=entry,
+                            args=[source],
+                        )
+
+                    self.assertIsInstance(value, str)
+                    self.assertFalse(value.startswith("error:"))
+                    self.assertEqual(ast_spy.call_count, 0)
+                    self.assertEqual(kir_spy.call_count, 0)
+                    self.assertEqual(analysis_spy.call_count, 0)
+
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
         raw = json.dumps(

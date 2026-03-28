@@ -1913,6 +1913,931 @@ fn try_build_bundle_if_stmt(source) {
   }
 }
 
+fn try_hir_line_program(source) {
+  let text = trim(source);
+  let count = line_count(text);
+  if eq(count, 0) {
+    return "";
+  } else {
+    if eq(count, 1) {
+      let stmt1 = parse_simple_line_statement_json(line_at(text, 0));
+      if eq(stmt1, "") {
+        return "";
+      } else {
+        return build_hir_program_json("", stmt1);
+      }
+    } else {
+      if eq(count, 2) {
+        let stmt1 = parse_simple_line_statement_json(line_at(text, 0));
+        let stmt2 = parse_simple_line_statement_json(line_at(text, 1));
+        if eq(stmt1, "") {
+          return "";
+        } else {
+          if eq(stmt2, "") {
+            return "";
+          } else {
+            return build_hir_program_json("", join_statements_2(stmt1, stmt2));
+          }
+        }
+      } else {
+        if eq(count, 3) {
+          let stmt1 = parse_simple_line_statement_json(line_at(text, 0));
+          let stmt2 = parse_simple_line_statement_json(line_at(text, 1));
+          let stmt3 = parse_simple_line_statement_json(line_at(text, 2));
+          if eq(stmt1, "") {
+            return "";
+          } else {
+            if eq(stmt2, "") {
+              return "";
+            } else {
+              if eq(stmt3, "") {
+                return "";
+              } else {
+                return build_hir_program_json("", join_statements_3(stmt1, stmt2, stmt3));
+              }
+            }
+          }
+        } else {
+          return "";
+        }
+      }
+    }
+  }
+}
+
+fn try_kir_line_program(source) {
+  let text = trim(source);
+  let count = line_count(text);
+  if eq(count, 0) {
+    return "";
+  } else {
+    if eq(count, 1) {
+      let stmt1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+      if eq(stmt1, "") {
+        return "";
+      } else {
+        return build_kir_program_json("", stmt1);
+      }
+    } else {
+      if eq(count, 2) {
+        let stmt1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+        let stmt2 = parse_simple_line_kir_stmt_json(line_at(text, 1));
+        if eq(stmt1, "") {
+          return "";
+        } else {
+          if eq(stmt2, "") {
+            return "";
+          } else {
+            return build_kir_program_json("", join_statements_2(stmt1, stmt2));
+          }
+        }
+      } else {
+        if eq(count, 3) {
+          let stmt1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+          let stmt2 = parse_simple_line_kir_stmt_json(line_at(text, 1));
+          let stmt3 = parse_simple_line_kir_stmt_json(line_at(text, 2));
+          if eq(stmt1, "") {
+            return "";
+          } else {
+            if eq(stmt2, "") {
+              return "";
+            } else {
+              if eq(stmt3, "") {
+                return "";
+              } else {
+                return build_kir_program_json("", join_statements_3(stmt1, stmt2, stmt3));
+              }
+            }
+          }
+        } else {
+          return "";
+        }
+      }
+    }
+  }
+}
+
+fn try_hir_zero_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 5) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let q = quote();
+    if eq(line4, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "() {") {
+          if starts_with(line2, "let ") {
+            if starts_with(line3, "print ") {
+              if starts_with(line5, "call ") {
+                let fn_name = before_substring(after_substring(line1, "fn "), "() {");
+                let rest = after_substring(line2, "let ");
+                let name = before_substring(rest, " = concat(");
+                let quoted1 = extract_quoted(line2);
+                let after_first = after_substring(line2, concat(q, ", "));
+                let quoted2 = extract_quoted(after_first);
+                let rebuilt2 = concat(
+                  "let ",
+                  concat(
+                    name,
+                    concat(
+                      " = concat(",
+                      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+                    )
+                  )
+                );
+                let rebuilt3 = concat("print ", name);
+                let rebuilt5 = concat(fn_name, "()");
+                if is_identifier(fn_name) {
+                  if is_identifier(name) {
+                    if eq(rebuilt2, line2) {
+                      if eq(rebuilt3, line3) {
+                        if eq(after_substring(line5, "call "), rebuilt5) {
+                          let let_ast = build_let_stmt_json(name, build_concat_expr_json(build_string_expr_json(quoted1), build_string_expr_json(quoted2)));
+                          let print_ast = build_print_stmt_json(build_var_expr_json(name));
+                          let body_json = join_statements_2(let_ast, print_ast);
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_0());
+                          let hir_fn = build_hir_function_json(fn_name, build_string_list_json_0(), body_json);
+                          return build_hir_program_json(hir_fn, call_ast);
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_kir_zero_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 5) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let q = quote();
+    if eq(line4, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "() {") {
+          if starts_with(line2, "let ") {
+            if starts_with(line3, "print ") {
+              if starts_with(line5, "call ") {
+                let fn_name = before_substring(after_substring(line1, "fn "), "() {");
+                let rest = after_substring(line2, "let ");
+                let name = before_substring(rest, " = concat(");
+                let quoted1 = extract_quoted(line2);
+                let after_first = after_substring(line2, concat(q, ", "));
+                let quoted2 = extract_quoted(after_first);
+                let rebuilt2 = concat(
+                  "let ",
+                  concat(
+                    name,
+                    concat(
+                      " = concat(",
+                      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+                    )
+                  )
+                );
+                let rebuilt3 = concat("print ", name);
+                let rebuilt5 = concat(fn_name, "()");
+                if is_identifier(fn_name) {
+                  if is_identifier(name) {
+                    if eq(rebuilt2, line2) {
+                      if eq(rebuilt3, line3) {
+                        if eq(after_substring(line5, "call "), rebuilt5) {
+                          let kir_let = build_kir_let_stmt_json(name, build_concat_expr_json(build_string_expr_json(quoted1), build_string_expr_json(quoted2)));
+                          let kir_print = build_kir_print_stmt_json(build_var_expr_json(name));
+                          let kir_body = join_statements_2(kir_let, kir_print);
+                          let kir_fn = build_hir_function_json(fn_name, build_string_list_json_0(), kir_body);
+                          let kir_call = build_kir_call_stmt_json(fn_name, build_expr_list_json_0());
+                          return build_kir_program_json(kir_fn, kir_call);
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_analysis_zero_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 5) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let q = quote();
+    if eq(line4, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "() {") {
+          if starts_with(line2, "let ") {
+            if starts_with(line3, "print ") {
+              if starts_with(line5, "call ") {
+                let fn_name = before_substring(after_substring(line1, "fn "), "() {");
+                let rest = after_substring(line2, "let ");
+                let name = before_substring(rest, " = concat(");
+                let quoted1 = extract_quoted(line2);
+                let after_first = after_substring(line2, concat(q, ", "));
+                let quoted2 = extract_quoted(after_first);
+                let rebuilt2 = concat(
+                  "let ",
+                  concat(
+                    name,
+                    concat(
+                      " = concat(",
+                      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+                    )
+                  )
+                );
+                let rebuilt3 = concat("print ", name);
+                let rebuilt5 = concat(fn_name, "()");
+                if is_identifier(fn_name) {
+                  if is_identifier(name) {
+                    if eq(rebuilt2, line2) {
+                      if eq(rebuilt3, line3) {
+                        if eq(after_substring(line5, "call "), rebuilt5) {
+                          return build_analysis_function_print_json(fn_name, "0");
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_hir_single_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 4) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let q = quote();
+    if eq(line3, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "{") {
+          if starts_with(line2, "print concat(") {
+            if starts_with(line4, "call ") {
+              let fn_header = after_substring(line1, "fn ");
+              let fn_name = before_substring(fn_header, "(");
+              let fn_rest = after_substring(fn_header, "(");
+              let param_name = before_substring(fn_rest, ") {");
+              let suffix = extract_quoted(line2);
+              let call_header = after_substring(line4, "call ");
+              let call_name = before_substring(call_header, "(");
+              let arg_text = extract_quoted(line4);
+              let rebuilt1 = concat("fn ", concat(fn_name, concat("(", concat(param_name, ") {"))));
+              let rebuilt2 = concat(
+                "print concat(",
+                concat(param_name, concat(", ", concat(q, concat(suffix, concat(q, ")")))))
+              );
+              let rebuilt4 = concat(
+                "call ",
+                concat(call_name, concat("(", concat(q, concat(arg_text, concat(q, ")")))))
+              );
+              if is_identifier(fn_name) {
+                if is_identifier(param_name) {
+                  if eq(fn_name, call_name) {
+                    if eq(rebuilt1, line1) {
+                      if eq(rebuilt2, line2) {
+                        if eq(rebuilt4, line4) {
+                          let print_ast = build_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                          let hir_fn = build_hir_function_json(fn_name, build_string_list_json_1(param_name), print_ast);
+                          return build_hir_program_json(hir_fn, call_ast);
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_kir_single_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 4) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let q = quote();
+    if eq(line3, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "{") {
+          if starts_with(line2, "print concat(") {
+            if starts_with(line4, "call ") {
+              let fn_header = after_substring(line1, "fn ");
+              let fn_name = before_substring(fn_header, "(");
+              let fn_rest = after_substring(fn_header, "(");
+              let param_name = before_substring(fn_rest, ") {");
+              let suffix = extract_quoted(line2);
+              let call_header = after_substring(line4, "call ");
+              let call_name = before_substring(call_header, "(");
+              let arg_text = extract_quoted(line4);
+              let rebuilt1 = concat("fn ", concat(fn_name, concat("(", concat(param_name, ") {"))));
+              let rebuilt2 = concat(
+                "print concat(",
+                concat(param_name, concat(", ", concat(q, concat(suffix, concat(q, ")")))))
+              );
+              let rebuilt4 = concat(
+                "call ",
+                concat(call_name, concat("(", concat(q, concat(arg_text, concat(q, ")")))))
+              );
+              if is_identifier(fn_name) {
+                if is_identifier(param_name) {
+                  if eq(fn_name, call_name) {
+                    if eq(rebuilt1, line1) {
+                      if eq(rebuilt2, line2) {
+                        if eq(rebuilt4, line4) {
+                          let kir_print = build_kir_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                          let kir_fn = build_hir_function_json(fn_name, build_string_list_json_1(param_name), kir_print);
+                          let kir_call = build_kir_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                          return build_kir_program_json(kir_fn, kir_call);
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_analysis_single_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 4) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let q = quote();
+    if eq(line3, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "{") {
+          if starts_with(line2, "print concat(") {
+            if starts_with(line4, "call ") {
+              let fn_header = after_substring(line1, "fn ");
+              let fn_name = before_substring(fn_header, "(");
+              let fn_rest = after_substring(fn_header, "(");
+              let param_name = before_substring(fn_rest, ") {");
+              let suffix = extract_quoted(line2);
+              let call_header = after_substring(line4, "call ");
+              let call_name = before_substring(call_header, "(");
+              let arg_text = extract_quoted(line4);
+              let rebuilt1 = concat("fn ", concat(fn_name, concat("(", concat(param_name, ") {"))));
+              let rebuilt2 = concat(
+                "print concat(",
+                concat(param_name, concat(", ", concat(q, concat(suffix, concat(q, ")")))))
+              );
+              let rebuilt4 = concat(
+                "call ",
+                concat(call_name, concat("(", concat(q, concat(arg_text, concat(q, ")")))))
+              );
+              if is_identifier(fn_name) {
+                if is_identifier(param_name) {
+                  if eq(fn_name, call_name) {
+                    if eq(rebuilt1, line1) {
+                      if eq(rebuilt2, line2) {
+                        if eq(rebuilt4, line4) {
+                          return build_analysis_function_print_json(fn_name, "1");
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_hir_if_expr(source) {
+  let text = trim(source);
+  if eq(line_count(text), 3) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line3);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat(
+      "print if(",
+      concat(
+        enabled_name,
+        concat(", ", concat(greeting_name, concat(", ", concat(q, concat(disabled_text, concat(q, ")"))))))
+      )
+    );
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+              let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+              let print_ast = build_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+              return build_hir_program_json("", join_statements_3(greeting_ast, enabled_ast, print_ast));
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_kir_if_expr(source) {
+  let text = trim(source);
+  if eq(line_count(text), 3) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line3);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat(
+      "print if(",
+      concat(
+        enabled_name,
+        concat(", ", concat(greeting_name, concat(", ", concat(q, concat(disabled_text, concat(q, ")"))))))
+      )
+    );
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              let greeting_kir = build_kir_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+              let enabled_kir = build_kir_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+              let print_kir = build_kir_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+              return build_kir_program_json("", join_statements_3(greeting_kir, enabled_kir, print_kir));
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_hir_if_stmt(source) {
+  let text = trim(source);
+  if eq(line_count(text), 7) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let line6 = line_at(text, 5);
+    let line7 = line_at(text, 6);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line6);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat("if ", concat(enabled_name, " {"));
+    let rebuilt4 = concat("print ", greeting_name);
+    let rebuilt5 = "} else {";
+    let rebuilt6 = concat("print ", concat(q, concat(disabled_text, q)));
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              if eq(rebuilt4, line4) {
+                if eq(rebuilt5, line5) {
+                  if eq(rebuilt6, line6) {
+                    if eq(line7, "}") {
+                      let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                      let if_ast = build_if_stmt_json(
+                        build_var_expr_json(enabled_name),
+                        build_print_stmt_json(build_var_expr_json(greeting_name)),
+                        build_print_stmt_json(build_string_expr_json(disabled_text))
+                      );
+                      return build_hir_program_json("", join_statements_3(greeting_ast, enabled_ast, if_ast));
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_kir_if_stmt(source) {
+  let text = trim(source);
+  if eq(line_count(text), 7) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let line6 = line_at(text, 5);
+    let line7 = line_at(text, 6);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line6);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat("if ", concat(enabled_name, " {"));
+    let rebuilt4 = concat("print ", greeting_name);
+    let rebuilt5 = "} else {";
+    let rebuilt6 = concat("print ", concat(q, concat(disabled_text, q)));
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              if eq(rebuilt4, line4) {
+                if eq(rebuilt5, line5) {
+                  if eq(rebuilt6, line6) {
+                    if eq(line7, "}") {
+                      let greeting_kir = build_kir_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let enabled_kir = build_kir_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                      let if_kir = build_kir_if_stmt_json(
+                        build_var_expr_json(enabled_name),
+                        build_kir_print_stmt_json(build_var_expr_json(greeting_name)),
+                        build_kir_print_stmt_json(build_string_expr_json(disabled_text))
+                      );
+                      return build_kir_program_json("", join_statements_3(greeting_kir, enabled_kir, if_kir));
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_analysis_line_program(source) {
+  let hir_json = try_hir_line_program(source);
+  if eq(hir_json, "") {
+    return "";
+  } else {
+    return build_analysis_program_print_json();
+  }
+}
+
+fn try_analysis_if_expr(source) {
+  let hir_json = try_hir_if_expr(source);
+  if eq(hir_json, "") {
+    return "";
+  } else {
+    return build_analysis_program_print_json();
+  }
+}
+
+fn try_analysis_if_stmt(source) {
+  let hir_json = try_hir_if_stmt(source);
+  if eq(hir_json, "") {
+    return "";
+  } else {
+    return build_analysis_program_print_json();
+  }
+}
+
 fn try_parse_two_prints(source) {
   let text = trim(source);
   if eq(line_count(text), 2) {
@@ -2789,44 +3714,119 @@ fn lower(source) {
 }
 
 fn hir(source) {
-  let ast = parse(source);
-  if starts_with(ast, "error:") {
-    return ast;
-  } else {
-    let hir_json = program_ast_to_hir(ast);
-    if eq(hir_json, "") {
-      return "error: unsupported source";
+  let line_hir = try_hir_line_program(source);
+  if eq(line_hir, "") {
+    let zero_arg_hir = try_hir_zero_arg_fn_call(source);
+    if eq(zero_arg_hir, "") {
+      let single_arg_hir = try_hir_single_arg_fn_call(source);
+      if eq(single_arg_hir, "") {
+        let if_expr_hir = try_hir_if_expr(source);
+        if eq(if_expr_hir, "") {
+          let if_stmt_hir = try_hir_if_stmt(source);
+          if eq(if_stmt_hir, "") {
+            let ast = parse(source);
+            if starts_with(ast, "error:") {
+              return ast;
+            } else {
+              let hir_json = program_ast_to_hir(ast);
+              if eq(hir_json, "") {
+                return "error: unsupported source";
+              } else {
+                return hir_json;
+              }
+            }
+          } else {
+            return if_stmt_hir;
+          }
+        } else {
+          return if_expr_hir;
+        }
+      } else {
+        return single_arg_hir;
+      }
     } else {
-      return hir_json;
+      return zero_arg_hir;
     }
+  } else {
+    return line_hir;
   }
 }
 
 fn kir(source) {
-  let hir_json = hir(source);
-  if starts_with(hir_json, "error:") {
-    return hir_json;
-  } else {
-    let kir_json = hir_to_kir(hir_json);
-    if eq(kir_json, "") {
-      return "error: unsupported source";
+  let line_kir = try_kir_line_program(source);
+  if eq(line_kir, "") {
+    let zero_arg_kir = try_kir_zero_arg_fn_call(source);
+    if eq(zero_arg_kir, "") {
+      let single_arg_kir = try_kir_single_arg_fn_call(source);
+      if eq(single_arg_kir, "") {
+        let if_expr_kir = try_kir_if_expr(source);
+        if eq(if_expr_kir, "") {
+          let if_stmt_kir = try_kir_if_stmt(source);
+          if eq(if_stmt_kir, "") {
+            let hir_json = hir(source);
+            if starts_with(hir_json, "error:") {
+              return hir_json;
+            } else {
+              let kir_json = hir_to_kir(hir_json);
+              if eq(kir_json, "") {
+                return "error: unsupported source";
+              } else {
+                return kir_json;
+              }
+            }
+          } else {
+            return if_stmt_kir;
+          }
+        } else {
+          return if_expr_kir;
+        }
+      } else {
+        return single_arg_kir;
+      }
     } else {
-      return kir_json;
+      return zero_arg_kir;
     }
+  } else {
+    return line_kir;
   }
 }
 
 fn analysis(source) {
-  let hir_json = hir(source);
-  if starts_with(hir_json, "error:") {
-    return hir_json;
-  } else {
-    let analysis_json = hir_to_analysis(hir_json);
-    if eq(analysis_json, "") {
-      return "error: unsupported source";
+  let line_analysis = try_analysis_line_program(source);
+  if eq(line_analysis, "") {
+    let zero_arg_analysis = try_analysis_zero_arg_fn_call(source);
+    if eq(zero_arg_analysis, "") {
+      let single_arg_analysis = try_analysis_single_arg_fn_call(source);
+      if eq(single_arg_analysis, "") {
+        let if_expr_analysis = try_analysis_if_expr(source);
+        if eq(if_expr_analysis, "") {
+          let if_stmt_analysis = try_analysis_if_stmt(source);
+          if eq(if_stmt_analysis, "") {
+            let hir_json = hir(source);
+            if starts_with(hir_json, "error:") {
+              return hir_json;
+            } else {
+              let analysis_json = hir_to_analysis(hir_json);
+              if eq(analysis_json, "") {
+                return "error: unsupported source";
+              } else {
+                return analysis_json;
+              }
+            }
+          } else {
+            return if_stmt_analysis;
+          }
+        } else {
+          return if_expr_analysis;
+        }
+      } else {
+        return single_arg_analysis;
+      }
     } else {
-      return analysis_json;
+      return zero_arg_analysis;
     }
+  } else {
+    return line_analysis;
   }
 }
 
