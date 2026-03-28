@@ -33,18 +33,14 @@ class BundleKirFutureTest(unittest.TestCase):
             compile_artifact=PrintArtifactV1(texts=["hello"]),
         )
 
-        with patch("kagi.compile_result.execute_subset_entry_via_kir_v0", return_value="bundle"):
+        with patch("kagi.compile_result.execute_selfhost_frontend_entry_v1", return_value="bundle"):
             with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", return_value=bundle):
-                with patch(
-                    "kagi.compile_result.lower_hir_program_to_kir_v0",
-                    side_effect=AssertionError("Python HIR->KIR lowering should not run on the main path"),
-                ):
-                    compiled = compile_source_v1(frontend_source, "ignored source")
+                compiled = compile_source_v1(frontend_source, "ignored source")
 
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    def test_compile_source_v1_still_calls_python_hir_to_kir_builtin(self):
+    def test_compile_source_v1_canonical_frontend_no_longer_calls_python_hir_to_kir_builtin(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
@@ -59,7 +55,7 @@ class BundleKirFutureTest(unittest.TestCase):
         ):
             compiled = compile_source_v1(frontend_source, source)
 
-        self.assertGreaterEqual(spy.call_count, 1)
+        self.assertEqual(spy.call_count, 0)
         self.assertEqual(compiled.stdout, "hello, world!")
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):

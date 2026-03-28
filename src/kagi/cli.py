@@ -18,7 +18,7 @@ from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .hir import inspect_hir_program_v1
 from .ir import action_to_string
-from .lower_subset_to_kir import execute_subset_entry_via_kir_v0
+from .selfhost_runtime import compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
 
 
@@ -98,7 +98,7 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
-    return execute_subset_entry_via_kir_v0(frontend_source, entry="parse", args=[program_source])
+    return execute_selfhost_frontend_entry_v1(frontend_source, entry="parse", args=[program_source])
 
 
 def main() -> None:
@@ -164,6 +164,10 @@ def main() -> None:
     selfhost_capir_parser.add_argument("source")
     selfhost_capir_parser.add_argument("--entry", default="compile")
     add_json_flag(selfhost_capir_parser)
+
+    selfhost_freeze_parser = subparsers.add_parser("selfhost-freeze")
+    selfhost_freeze_parser.add_argument("frontend")
+    add_json_flag(selfhost_freeze_parser)
 
     args = parser.parse_args()
     if args.command == "run":
@@ -383,6 +387,18 @@ def main() -> None:
             )
         except SystemExit:
             raise
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-freeze":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            kir_json = compile_selfhost_frontend_to_kir_v1(frontend_source)
+            if args.json:
+                emit_payload({"ok": True, "kir": json.loads(kir_json)})
+            else:
+                emit_text(kir_json)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return

@@ -7,10 +7,9 @@ from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .effects import EffectSummaryV1, infer_effects_v1
 from .hir import HIRProgramV1, lower_surface_program_to_hir_v1
 from .kir import KIRProgramV1
-from .lower_hir_to_kir import lower_hir_program_to_kir_v0
-from .lower_subset_to_kir import execute_subset_entry_via_kir_v0
 from .resolve import ResolvedProgramV1, resolve_hir_program_v1
 from .selfhost_bundle import parse_selfhost_pipeline_bundle_v1
+from .selfhost_runtime import execute_selfhost_frontend_entry_v1
 from .surface_ast import SurfaceProgramV1
 from .typecheck import TypecheckedProgramV1, typecheck_program_v1
 
@@ -58,7 +57,7 @@ class CompileResultV1:
 
 def compile_source_v1(frontend_source: str, program_source: str) -> CompileResultV1:
     frontend_entry = "pipeline"
-    bundle_raw = execute_subset_entry_via_kir_v0(frontend_source, entry=frontend_entry, args=[program_source])
+    bundle_raw = execute_selfhost_frontend_entry_v1(frontend_source, entry=frontend_entry, args=[program_source])
     if not isinstance(bundle_raw, str) or bundle_raw.startswith("error:"):
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-pipeline", str(bundle_raw))

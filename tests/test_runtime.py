@@ -1083,13 +1083,26 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.lower.hir.functions[0].name, "emit_suffix")
 
-    def test_compile_source_v1_does_not_depend_on_python_kir_lowering(self):
+    def test_compile_source_v1_does_not_depend_on_subset_kir_fallback(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
-        with patch("kagi.compile_result.lower_hir_program_to_kir_v0", side_effect=AssertionError("python kir lowering should not be used")):
+        with patch("kagi.selfhost_runtime.execute_subset_entry_via_kir_v0", side_effect=AssertionError("subset fallback should not be used")):
             compiled = compile_source_v1(frontend, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(compiled.lower.kir.functions[0].name, "emit_suffix")
+
+    def test_compile_source_v1_uses_canonical_frontend_kir_image_without_subset_parser(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.selfhost_runtime.execute_subset_entry_via_kir_v0", side_effect=AssertionError("subset fallback should not be used")):
+            with patch("kagi.selfhost_runtime.parse_subset_program", side_effect=AssertionError("subset parser should not be used")):
+                with patch("kagi.selfhost_runtime.lower_subset_program_to_kir_v0", side_effect=AssertionError("subset kir lowering should not be used")):
+                    compiled = compile_source_v1(frontend, source)
 
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.lower.kir.functions[0].name, "emit_suffix")

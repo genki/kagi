@@ -20,6 +20,7 @@ from .runtime import (
     well_formed,
 )
 from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
+from .selfhost_runtime import compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
 from .surface_ast import SurfaceFunctionV1, SurfaceProgramV1
 from .subset import FunctionDef, ParamDef, SubsetProgram, parse_subset_program, run_subset_program, run_subset_program_via_kir, typecheck_subset_program_v0
 from .subset_typecheck import SubsetTypecheckResultV0
@@ -65,6 +66,8 @@ __all__ = [
     "artifact_v1_stdout",
     "artifact_v1_to_json",
     "compile_source_v1",
+    "compile_selfhost_frontend_to_kir_v1",
+    "execute_selfhost_frontend_entry_v1",
     "execute_bootstrap_program",
     "execute_and_inspect_capir_artifact",
     "execute_capir_artifact",
