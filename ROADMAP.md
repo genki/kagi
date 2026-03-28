@@ -101,6 +101,14 @@
   - `artifact.py`
   - `compile_result.py`
   - `compile_source_v1(...)`
+- `split-subset-pipeline` を追加
+  - `subset_ast.py`
+  - `subset_lexer.py`
+  - `subset_parser.py`
+  - `subset_eval.py`
+  - `subset_builtins.py`
+  - `bootstrap_builders.py`
+  - `subset.py` は facade
 
 ## 非目標
 

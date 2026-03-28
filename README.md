@@ -69,6 +69,18 @@ self-hosting 用の最小 subset を追加しています。
 - `extract_quoted`
 - `trim`
 
+実装は分割済みで、`subset.py` は facade です。
+
+- `src/kagi/subset_ast.py`
+- `src/kagi/subset_lexer.py`
+- `src/kagi/subset_parser.py`
+- `src/kagi/subset_eval.py`
+- `src/kagi/subset_builtins.py`
+- `src/kagi/bootstrap_builders.py`
+- `src/kagi/subset.py`
+
+このうち `program_*_ast` 系の bootstrap helper は `bootstrap_builders.py` へ分離しています。
+
 ## Self-Hosted Front Half
 
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
