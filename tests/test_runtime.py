@@ -449,8 +449,10 @@ class RuntimeTest(unittest.TestCase):
                 },
                 "kir": {
                     "kind": "kir",
-                    "effect": "print",
-                    "ops": [{"text": "hello, world!"}],
+                    "functions": [],
+                    "instructions": [
+                        {"op": "print", "expr": {"kind": "string", "value": "hello, world!"}},
+                    ],
                 },
                 "analysis": {
                     "kind": "analysis_v1",

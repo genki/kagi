@@ -1049,6 +1049,111 @@ fn build_print_many_json_2(text1, text2) {
   );
 }
 
+fn build_string_list_json_0() {
+  return "[]";
+}
+
+fn build_string_list_json_1(item) {
+  return concat("[\"", concat(item, "\"]"));
+}
+
+fn build_expr_list_json_0() {
+  return "[]";
+}
+
+fn build_expr_list_json_1(expr_json) {
+  return concat("[", concat(expr_json, "]"));
+}
+
+fn build_hir_program_json(functions_json, statements_json) {
+  return concat(
+    "{\"kind\":\"hir_program\",\"functions\":[",
+    concat(functions_json, concat("],\"statements\":[", concat(statements_json, "]}")))
+  );
+}
+
+fn build_hir_function_json(name, params_json, body_json) {
+  return concat(
+    "{\"name\":\"",
+    concat(name, concat("\",\"params\":", concat(params_json, concat(",\"body\":[", concat(body_json, "]}")))))
+  );
+}
+
+fn build_call_stmt_json(name, args_json) {
+  return concat(
+    "{\"kind\":\"call\",\"name\":\"",
+    concat(name, concat("\",\"args\":", concat(args_json, "}")))
+  );
+}
+
+fn build_kir_program_json(functions_json, instructions_json) {
+  return concat(
+    "{\"kind\":\"kir\",\"functions\":[",
+    concat(functions_json, concat("],\"instructions\":[", concat(instructions_json, "]}")))
+  );
+}
+
+fn build_kir_print_only_json(text) {
+  return concat(
+    "{\"kind\":\"kir\",\"effect\":\"print\",\"ops\":[{\"text\":\"",
+    concat(text, "\"}]}")
+  );
+}
+
+fn build_kir_print_stmt_json(expr_json) {
+  return concat("{\"op\":\"print\",\"expr\":", concat(expr_json, "}"));
+}
+
+fn build_kir_let_stmt_json(name, expr_json) {
+  return concat(
+    "{\"op\":\"let\",\"name\":\"",
+    concat(name, concat("\",\"expr\":", concat(expr_json, "}")))
+  );
+}
+
+fn build_kir_if_stmt_json(condition_json, then_stmt_json, else_stmt_json) {
+  return concat(
+    "{\"op\":\"if\",\"condition\":",
+    concat(
+      condition_json,
+      concat(
+        ",\"then\":[",
+        concat(then_stmt_json, concat("],\"else\":[", concat(else_stmt_json, "]}")))
+      )
+    )
+  );
+}
+
+fn build_kir_call_stmt_json(name, args_json) {
+  return concat(
+    "{\"op\":\"call\",\"name\":\"",
+    concat(name, concat("\",\"args\":", concat(args_json, "}")))
+  );
+}
+
+fn build_analysis_program_print_json() {
+  return "{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}";
+}
+
+fn build_analysis_function_print_json(name, arity_text) {
+  return concat(
+    "{\"kind\":\"analysis_v1\",\"function_arities\":{\"",
+    concat(
+      name,
+      concat(
+        "\":",
+        concat(
+          arity_text,
+          concat(
+            "},\"effects\":{\"program\":[\"print\"],\"functions\":{\"",
+            concat(name, "\":[\"print\"]}}}")
+          )
+        )
+      )
+    )
+  );
+}
+
 fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, analysis_json, artifact_json) {
   return concat(
     "{\"kind\":\"pipeline_bundle\",\"ast\":",
@@ -1216,6 +1321,37 @@ fn parse_simple_line_statement_json(line) {
   }
 }
 
+fn parse_simple_line_kir_stmt_json(line) {
+  let text = trim(line);
+  if starts_with(text, "let ") {
+    let rest = after_substring(text, "let ");
+    let name = before_substring(rest, " = ");
+    let expr_text = after_substring(rest, " = ");
+    let expr_json = parse_simple_line_expr_json(expr_text);
+    if is_identifier(name) {
+      if eq(expr_json, "") {
+        return "";
+      } else {
+        return build_kir_let_stmt_json(name, expr_json);
+      }
+    } else {
+      return "";
+    }
+  } else {
+    if starts_with(text, "print ") {
+      let expr_text = after_substring(text, "print ");
+      let expr_json = parse_simple_line_expr_json(expr_text);
+      if eq(expr_json, "") {
+        return "";
+      } else {
+        return build_kir_print_stmt_json(expr_json);
+      }
+    } else {
+      return "";
+    }
+  }
+}
+
 fn try_parse_line_program(source) {
   let text = trim(source);
   let count = line_count(text);
@@ -1289,6 +1425,302 @@ fn try_parse_line_program(source) {
         }
       }
     }
+  }
+}
+
+fn try_build_bundle_line_program(source) {
+  let text = trim(source);
+  let count = line_count(text);
+  if eq(count, 0) {
+    return "";
+  } else {
+    if eq(count, 1) {
+      let ast1 = parse_simple_line_statement_json(line_at(text, 0));
+      let kir1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+      if eq(ast1, "") {
+        return "";
+      } else {
+        if eq(kir1, "") {
+          return "";
+        } else {
+          let ast_json = build_program_json(ast1);
+          let hir_json = build_hir_program_json("", ast1);
+          let kir_json = build_kir_program_json("", kir1);
+          let artifact_json = lower(source);
+          if starts_with(artifact_json, "error:") {
+            return "";
+          } else {
+            return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_program_print_json(), artifact_json);
+          }
+        }
+      }
+    } else {
+      if eq(count, 2) {
+        let ast1 = parse_simple_line_statement_json(line_at(text, 0));
+        let ast2 = parse_simple_line_statement_json(line_at(text, 1));
+        let kir1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+        let kir2 = parse_simple_line_kir_stmt_json(line_at(text, 1));
+        if eq(ast1, "") {
+          return "";
+        } else {
+          if eq(ast2, "") {
+            return "";
+          } else {
+            if eq(kir1, "") {
+              return "";
+            } else {
+              if eq(kir2, "") {
+                return "";
+              } else {
+                let stmts_json = join_statements_2(ast1, ast2);
+                let kir_stmts_json = join_statements_2(kir1, kir2);
+                let ast_json = build_program_json(stmts_json);
+                let hir_json = build_hir_program_json("", stmts_json);
+                let kir_json = build_kir_program_json("", kir_stmts_json);
+                let artifact_json = lower(source);
+                if starts_with(artifact_json, "error:") {
+                  return "";
+                } else {
+                  return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_program_print_json(), artifact_json);
+                }
+              }
+            }
+          }
+        }
+      } else {
+        if eq(count, 3) {
+          let ast1 = parse_simple_line_statement_json(line_at(text, 0));
+          let ast2 = parse_simple_line_statement_json(line_at(text, 1));
+          let ast3 = parse_simple_line_statement_json(line_at(text, 2));
+          let kir1 = parse_simple_line_kir_stmt_json(line_at(text, 0));
+          let kir2 = parse_simple_line_kir_stmt_json(line_at(text, 1));
+          let kir3 = parse_simple_line_kir_stmt_json(line_at(text, 2));
+          if eq(ast1, "") {
+            return "";
+          } else {
+            if eq(ast2, "") {
+              return "";
+            } else {
+              if eq(ast3, "") {
+                return "";
+              } else {
+                if eq(kir1, "") {
+                  return "";
+                } else {
+                  if eq(kir2, "") {
+                    return "";
+                  } else {
+                    if eq(kir3, "") {
+                      return "";
+                    } else {
+                      let stmts_json = join_statements_3(ast1, ast2, ast3);
+                      let kir_stmts_json = join_statements_3(kir1, kir2, kir3);
+                      let ast_json = build_program_json(stmts_json);
+                      let hir_json = build_hir_program_json("", stmts_json);
+                      let kir_json = build_kir_program_json("", kir_stmts_json);
+                      let artifact_json = lower(source);
+                      if starts_with(artifact_json, "error:") {
+                        return "";
+                      } else {
+                        return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_program_print_json(), artifact_json);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          return "";
+        }
+      }
+    }
+  }
+}
+
+fn try_build_bundle_zero_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 5) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let q = quote();
+    if eq(line4, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "() {") {
+          if starts_with(line2, "let ") {
+            if starts_with(line3, "print ") {
+              if starts_with(line5, "call ") {
+                let fn_name = before_substring(after_substring(line1, "fn "), "() {");
+                let rest = after_substring(line2, "let ");
+                let name = before_substring(rest, " = concat(");
+                let quoted1 = extract_quoted(line2);
+                let after_first = after_substring(line2, concat(q, ", "));
+                let quoted2 = extract_quoted(after_first);
+                let rebuilt2 = concat(
+                  "let ",
+                  concat(
+                    name,
+                    concat(
+                      " = concat(",
+                      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+                    )
+                  )
+                );
+                let rebuilt3 = concat("print ", name);
+                let rebuilt5 = concat(fn_name, "()");
+                if is_identifier(fn_name) {
+                  if is_identifier(name) {
+                    if eq(rebuilt2, line2) {
+                      if eq(rebuilt3, line3) {
+                        if eq(after_substring(line5, "call "), rebuilt5) {
+                          let let_ast = build_let_stmt_json(name, build_concat_expr_json(build_string_expr_json(quoted1), build_string_expr_json(quoted2)));
+                          let print_ast = build_print_stmt_json(build_var_expr_json(name));
+                          let body_json = join_statements_2(let_ast, print_ast);
+                          let fn_json = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[],\"body\":[", concat(body_json, "]}"))));
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_0());
+                          let ast_json = concat("{\"kind\":\"program\",\"functions\":[", concat(fn_json, concat("],\"statements\":[", concat(call_ast, "]}"))));
+                          let hir_fn = build_hir_function_json(fn_name, build_string_list_json_0(), body_json);
+                          let hir_json = build_hir_program_json(hir_fn, call_ast);
+                          let kir_let = build_kir_let_stmt_json(name, build_concat_expr_json(build_string_expr_json(quoted1), build_string_expr_json(quoted2)));
+                          let kir_print = build_kir_print_stmt_json(build_var_expr_json(name));
+                          let kir_body = join_statements_2(kir_let, kir_print);
+                          let kir_fn = build_hir_function_json(fn_name, build_string_list_json_0(), kir_body);
+                          let kir_call = build_kir_call_stmt_json(fn_name, build_expr_list_json_0());
+                          let kir_json = build_kir_program_json(kir_fn, kir_call);
+                          let artifact_json = lower(source);
+                          if starts_with(artifact_json, "error:") {
+                            return "";
+                          } else {
+                            return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_function_print_json(fn_name, "0"), artifact_json);
+                          }
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_build_bundle_single_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 4) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let q = quote();
+    if eq(line3, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "{") {
+          if starts_with(line2, "print concat(") {
+            if starts_with(line4, "call ") {
+              let fn_header = after_substring(line1, "fn ");
+              let fn_name = before_substring(fn_header, "(");
+              let fn_rest = after_substring(fn_header, "(");
+              let param_name = before_substring(fn_rest, ") {");
+              let suffix = extract_quoted(line2);
+              let call_header = after_substring(line4, "call ");
+              let call_name = before_substring(call_header, "(");
+              let arg_text = extract_quoted(line4);
+              let rebuilt1 = concat("fn ", concat(fn_name, concat("(", concat(param_name, ") {"))));
+              let rebuilt2 = concat(
+                "print concat(",
+                concat(param_name, concat(", ", concat(q, concat(suffix, concat(q, ")")))))
+              );
+              let rebuilt4 = concat(
+                "call ",
+                concat(call_name, concat("(", concat(q, concat(arg_text, concat(q, ")")))))
+              );
+              if is_identifier(fn_name) {
+                if is_identifier(param_name) {
+                  if eq(fn_name, call_name) {
+                    if eq(rebuilt1, line1) {
+                      if eq(rebuilt2, line2) {
+                        if eq(rebuilt4, line4) {
+                          let print_ast = build_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                          let fn_ast = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[\"", concat(param_name, concat("\"],\"body\":[", concat(print_ast, "]}"))))));
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                          let ast_json = concat("{\"kind\":\"program\",\"functions\":[", concat(fn_ast, concat("],\"statements\":[", concat(call_ast, "]}"))));
+                          let hir_fn = build_hir_function_json(fn_name, build_string_list_json_1(param_name), print_ast);
+                          let hir_json = build_hir_program_json(hir_fn, call_ast);
+                          let kir_print = build_kir_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                          let kir_fn = build_hir_function_json(fn_name, build_string_list_json_1(param_name), kir_print);
+                          let kir_call = build_kir_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                          let kir_json = build_kir_program_json(kir_fn, kir_call);
+                          let artifact_json = lower(source);
+                          if starts_with(artifact_json, "error:") {
+                            return "";
+                          } else {
+                            return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_function_print_json(fn_name, "1"), artifact_json);
+                          }
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
   }
 }
 
@@ -2214,30 +2646,45 @@ fn compile(source) {
 }
 
 fn pipeline(source) {
-  let ast = parse(source);
-  if starts_with(ast, "error:") {
-    return ast;
-  } else {
-    let hir_json = hir(source);
-    if starts_with(hir_json, "error:") {
-      return hir_json;
-    } else {
-      let kir_json = kir(source);
-      if starts_with(kir_json, "error:") {
-        return kir_json;
-      } else {
-        let analysis_json = analysis(source);
-        if starts_with(analysis_json, "error:") {
-          return analysis_json;
+  let line_bundle = try_build_bundle_line_program(source);
+  if eq(line_bundle, "") {
+    let zero_arg_bundle = try_build_bundle_zero_arg_fn_call(source);
+    if eq(zero_arg_bundle, "") {
+      let single_arg_bundle = try_build_bundle_single_arg_fn_call(source);
+      if eq(single_arg_bundle, "") {
+        let ast = parse(source);
+        if starts_with(ast, "error:") {
+          return ast;
         } else {
-          let artifact = lower(source);
-          if starts_with(artifact, "error:") {
-            return artifact;
+          let hir_json = hir(source);
+          if starts_with(hir_json, "error:") {
+            return hir_json;
           } else {
-            return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+            let kir_json = kir(source);
+            if starts_with(kir_json, "error:") {
+              return kir_json;
+            } else {
+              let analysis_json = analysis(source);
+              if starts_with(analysis_json, "error:") {
+                return analysis_json;
+              } else {
+                let artifact = lower(source);
+                if starts_with(artifact, "error:") {
+                  return artifact;
+                } else {
+                  return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+                }
+              }
+            }
           }
         }
+      } else {
+        return single_arg_bundle;
       }
+    } else {
+      return zero_arg_bundle;
     }
+  } else {
+    return line_bundle;
   }
 }

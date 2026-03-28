@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from kagi.artifact import PrintArtifactV1
-from kagi.bootstrap_builders import builtin_program_ast_to_hir
+from kagi.bootstrap_builders import builtin_hir_to_analysis, builtin_hir_to_kir, builtin_program_ast_to_hir
 from kagi.compile_result import compile_source_v1
 from kagi.hir import lower_surface_program_to_hir_v1
 from kagi.kir import KIRPrintV0, KIRProgramV0, KIRStringV0, serialize_kir_program_v0
@@ -45,20 +45,29 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    def test_compile_source_v1_canonical_frontend_still_calls_python_program_ast_to_hir_builtin(self):
+    def test_compile_source_v1_canonical_frontend_does_not_call_python_bootstrap_builtins(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
 
-        spy = Mock(side_effect=builtin_program_ast_to_hir)
+        ast_spy = Mock(side_effect=builtin_program_ast_to_hir)
+        kir_spy = Mock(side_effect=builtin_hir_to_kir)
+        analysis_spy = Mock(side_effect=builtin_hir_to_analysis)
         with patch.object(
             selfhost_runtime,
             "SUBSET_KIR_BUILTINS",
-            {**selfhost_runtime.SUBSET_KIR_BUILTINS, "program_ast_to_hir": spy},
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                "program_ast_to_hir": ast_spy,
+                "hir_to_kir": kir_spy,
+                "hir_to_analysis": analysis_spy,
+            },
         ):
             compiled = compile_source_v1(frontend_source, source)
 
-        self.assertGreaterEqual(spy.call_count, 1)
+        self.assertEqual(ast_spy.call_count, 0)
+        self.assertEqual(kir_spy.call_count, 0)
+        self.assertEqual(analysis_spy.call_count, 0)
         self.assertEqual(compiled.stdout, "hello, world!")
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
