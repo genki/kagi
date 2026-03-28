@@ -1,0 +1,5 @@
+fn emit_suffix(name) {
+  print concat(name, "!")
+}
+
+call emit_suffix("hello, world")

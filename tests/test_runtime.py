@@ -412,6 +412,7 @@ class RuntimeTest(unittest.TestCase):
                     {
                         "kind": "fn",
                         "name": "emit_greeting",
+                        "params": [],
                         "body": [
                             {
                                 "kind": "let",
@@ -427,7 +428,45 @@ class RuntimeTest(unittest.TestCase):
                     }
                 ],
                 "statements": [
-                    {"kind": "call", "name": "emit_greeting"},
+                    {"kind": "call", "name": "emit_greeting", "args": []},
+                ],
+            },
+        )
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
+    def test_selfhost_frontend_supports_single_argument_function_call(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        lowered = run_subset_program(frontend, entry="lower", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "functions": [
+                    {
+                        "kind": "fn",
+                        "name": "emit_suffix",
+                        "params": ["name"],
+                        "body": [
+                            {
+                                "kind": "print",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "var", "name": "name"},
+                                    "right": {"kind": "string", "value": "!"},
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "statements": [
+                    {
+                        "kind": "call",
+                        "name": "emit_suffix",
+                        "args": [{"kind": "string", "value": "hello, world"}],
+                    },
                 ],
             },
         )
@@ -519,6 +558,31 @@ class RuntimeTest(unittest.TestCase):
                 "--json",
                 str(root / "examples" / "selfhost_frontend.ks"),
                 str(root / "examples" / "hello_fn.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+        self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
+
+    def test_cli_selfhost_run_outputs_single_argument_function_call(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_arg_fn.ksrc"),
             ],
             cwd=root,
             env={"PYTHONPATH": str(root / "src")},

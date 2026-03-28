@@ -28,11 +28,13 @@ class TinyIfStmt:
 @dataclass(frozen=True)
 class TinyCallStmt:
     name: str
+    args: list["TinyExpr"]
 
 
 @dataclass(frozen=True)
 class TinyFunction:
     name: str
+    params: list[str]
     body: list["TinyStmt"]
 
 
@@ -120,12 +122,21 @@ def parse_tiny_function(fn: object) -> TinyFunction:
             diagnostic_from_runtime_error("selfhost-bridge", "function must be an object")
         )
     name = fn.get("name")
+    params_raw = fn.get("params", [])
     body_raw = fn.get("body")
     if not isinstance(name, str) or not isinstance(body_raw, list):
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "function requires name and body")
         )
-    return TinyFunction(name=name, body=[parse_tiny_stmt(item) for item in body_raw])
+    if not isinstance(params_raw, list) or not all(isinstance(param, str) and param for param in params_raw):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "function requires string params")
+        )
+    if len(params_raw) > 1:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-bridge", "tiny functions support at most one parameter")
+        )
+    return TinyFunction(name=name, params=params_raw, body=[parse_tiny_stmt(item) for item in body_raw])
 
 
 def parse_tiny_stmt(stmt: object) -> TinyStmt:
@@ -161,7 +172,12 @@ def parse_tiny_stmt(stmt: object) -> TinyStmt:
             raise DiagnosticError(
                 diagnostic_from_runtime_error("selfhost-bridge", "call statement requires name")
             )
-        return TinyCallStmt(name=name)
+        args_raw = stmt.get("args", [])
+        if not isinstance(args_raw, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "call statement requires args")
+            )
+        return TinyCallStmt(name=name, args=[parse_tiny_expr(item) for item in args_raw])
     raise DiagnosticError(
         diagnostic_from_runtime_error("selfhost-bridge", "unsupported statement in program ast")
     )
@@ -229,7 +245,8 @@ def lower_tiny_program_to_capir(program: TinyProgram) -> CapIRFragment:
     env: dict[str, str | bool] = {}
     ops: list[CapIRPrint] = []
     functions = {fn.name: fn.body for fn in program.functions}
-    execute_tiny_statements(program.statements, env, ops, functions, set())
+    function_map = {fn.name: fn for fn in program.functions}
+    execute_tiny_statements(program.statements, env, ops, function_map, set())
     if len(ops) == 0:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one print")
@@ -282,7 +299,7 @@ def execute_tiny_statements(
     statements: list[TinyStmt],
     env: dict[str, str | bool],
     ops: list[CapIRPrint],
-    functions: dict[str, list[TinyStmt]],
+    functions: dict[str, TinyFunction],
     call_stack: set[str],
 ) -> None:
     for stmt in statements:
@@ -315,7 +332,20 @@ def execute_tiny_statements(
                 raise DiagnosticError(
                     diagnostic_from_runtime_error("selfhost-bridge", f"recursive tiny function: {stmt.name}")
                 )
-            execute_tiny_statements(functions[stmt.name], dict(env), ops, functions, call_stack | {stmt.name})
+            fn = functions[stmt.name]
+            if len(stmt.args) != len(fn.params):
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("selfhost-bridge", f"arity mismatch for tiny function: {stmt.name}")
+                )
+            nested_env = dict(env)
+            for param_name, arg_expr in zip(fn.params, stmt.args):
+                value = eval_tiny_expr(arg_expr, env)
+                if not isinstance(value, (str, bool)):
+                    raise DiagnosticError(
+                        diagnostic_from_runtime_error("selfhost-bridge", "call argument must evaluate to a value")
+                    )
+                nested_env[param_name] = value
+            execute_tiny_statements(fn.body, nested_env, ops, functions, call_stack | {stmt.name})
             continue
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "unsupported tiny statement")

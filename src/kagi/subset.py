@@ -285,15 +285,20 @@ def parse_tiny_program_items(
         line = lines[index]
         if line.startswith("fn ") and line.endswith("{"):
             header = line[len("fn "):-1].strip()
-            if not header.endswith("()"):
+            if "(" not in header or not header.endswith(")"):
                 return None, None, index
-            name = header[:-2].strip()
+            name, params_raw = header.split("(", 1)
+            name = name.strip()
+            params_raw = params_raw[:-1].strip()
             if not name or not name.replace("_", "").isalnum():
+                return None, None, index
+            params = parse_tiny_name_list(params_raw)
+            if params is None:
                 return None, None, index
             body, next_index = parse_tiny_stmt_block(lines, index + 1, stop_at_closing=True)
             if body is None:
                 return None, None, index
-            functions.append({"kind": "fn", "name": name, "body": body})
+            functions.append({"kind": "fn", "name": name, "params": params, "body": body})
             index = next_index
             continue
         block, next_index = parse_tiny_stmt_block(lines, index, stop_at_closing=False)
@@ -347,11 +352,19 @@ def parse_tiny_stmt_block(
             )
             index = next_index
             continue
-        if line.startswith("call ") and line.endswith("()"):
-            name = line[len("call "):-2].strip()
+        if line.startswith("call ") and line.endswith(")"):
+            call_text = line[len("call "):].strip()
+            if "(" not in call_text or not call_text.endswith(")"):
+                return None, index
+            name, args_raw = call_text.split("(", 1)
+            name = name.strip()
+            args_raw = args_raw[:-1].strip()
             if not name or not name.replace("_", "").isalnum():
                 return None, index
-            statements.append({"kind": "call", "name": name})
+            args = parse_tiny_call_args(args_raw)
+            if args is None:
+                return None, index
+            statements.append({"kind": "call", "name": name, "args": args})
             index += 1
             continue
         if line == "else {":
@@ -382,6 +395,26 @@ def parse_tiny_stmt_block(
     if stop_at_closing:
         return None, index
     return statements, index
+
+
+def parse_tiny_name_list(text: str) -> list[str] | None:
+    if text == "":
+        return []
+    names = [part.strip() for part in text.split(",")]
+    if len(names) > 1:
+        return None
+    if not names[0] or not names[0].replace("_", "").isalnum():
+        return None
+    return names
+
+
+def parse_tiny_call_args(text: str) -> list[dict] | None:
+    if text == "":
+        return []
+    expr = parse_tiny_expr(text)
+    if expr is None:
+        return None
+    return [expr]
 
 
 def parse_tiny_expr(expr: str) -> dict | None:
@@ -487,30 +520,31 @@ def builtin_validate_program_ast(ast: object) -> str:
     functions = payload.get("functions", [])
     if not isinstance(functions, list):
         return "error: invalid program ast"
-    function_names: set[str] = set()
-    function_map: dict[str, list[dict]] = {}
+    function_signatures: dict[str, int] = {}
     for fn in functions:
         if not isinstance(fn, dict) or fn.get("kind") != "fn":
             return "error: invalid program ast"
         name = fn.get("name")
+        params = fn.get("params", [])
         body = fn.get("body")
         if not isinstance(name, str) or not name:
             return "error: invalid program ast"
-        if name in function_names:
+        if name in function_signatures:
             return "error: invalid program ast"
-        if validate_tiny_body(body, set(), function_names | {name}) != "ok":
+        if not isinstance(params, list) or not all(isinstance(param, str) and param for param in params):
             return "error: invalid program ast"
-        function_names.add(name)
-        if not isinstance(body, list):
+        if len(params) > 1:
             return "error: invalid program ast"
-        function_map[name] = body
+        function_signatures[name] = len(params)
+        if validate_tiny_body(body, set(params), function_signatures) != "ok":
+            return "error: invalid program ast"
     statements = payload.get("statements")
     if not isinstance(statements, list) or len(statements) == 0:
         return "error: invalid program ast"
-    return validate_tiny_body(statements, set(), function_names)
+    return validate_tiny_body(statements, set(), function_signatures)
 
 
-def validate_tiny_body(body: object, defined: set[str], functions: set[str]) -> str:
+def validate_tiny_body(body: object, defined: set[str], functions: dict[str, int]) -> str:
     if not isinstance(body, list):
         return "error"
     nested_defined = set(defined)
@@ -532,7 +566,12 @@ def validate_tiny_body(body: object, defined: set[str], functions: set[str]) -> 
             continue
         if kind == "call":
             name = stmt.get("name")
+            args = stmt.get("args", [])
             if not isinstance(name, str) or name not in functions:
+                return "error"
+            if not isinstance(args, list) or len(args) != functions[name]:
+                return "error"
+            if any(validate_tiny_expr(arg, nested_defined) != "ok" for arg in args):
                 return "error"
             continue
         if kind == "if_stmt":
@@ -620,15 +659,20 @@ def builtin_lower_program_artifact(ast: object) -> str:
     functions_raw = payload.get("functions", [])
     if not isinstance(functions_raw, list):
         return "error: invalid program ast"
-    functions: dict[str, list[dict]] = {}
+    functions: dict[str, tuple[list[str], list[dict]]] = {}
     for fn in functions_raw:
         if not isinstance(fn, dict) or fn.get("kind") != "fn":
             return "error: invalid program ast"
         name = fn.get("name")
+        params = fn.get("params", [])
         body = fn.get("body")
         if not isinstance(name, str) or not isinstance(body, list):
             return "error: invalid program ast"
-        functions[name] = body
+        if not isinstance(params, list) or not all(isinstance(param, str) and param for param in params):
+            return "error: invalid program ast"
+        if len(params) > 1:
+            return "error: invalid program ast"
+        functions[name] = (params, body)
     statements = payload.get("statements")
     if not isinstance(statements, list) or len(statements) == 0:
         return "error: invalid program ast"
@@ -643,7 +687,7 @@ def eval_tiny_body(
     body: object,
     env: dict[str, str | bool],
     texts: list[str],
-    functions: dict[str, list[dict]],
+    functions: dict[str, tuple[list[str], list[dict]]],
     call_stack: set[str],
 ) -> str:
     if not isinstance(body, list):
@@ -668,11 +712,21 @@ def eval_tiny_body(
             continue
         if kind == "call":
             name = stmt.get("name")
+            args = stmt.get("args", [])
             if not isinstance(name, str) or name not in functions:
+                return "error"
+            params, fn_body = functions[name]
+            if not isinstance(args, list) or len(args) != len(params):
                 return "error"
             if name in call_stack:
                 return "error"
-            if eval_tiny_body(functions[name], dict(nested_env), texts, functions, call_stack | {name}) != "ok":
+            nested_call_env = dict(nested_env)
+            for param_name, arg_expr in zip(params, args):
+                value = eval_tiny_expr(arg_expr, nested_env)
+                if value is None:
+                    return "error"
+                nested_call_env[param_name] = value
+            if eval_tiny_body(fn_body, nested_call_env, texts, functions, call_stack | {name}) != "ok":
                 return "error"
             continue
         if kind == "if_stmt":
