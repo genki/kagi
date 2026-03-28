@@ -73,8 +73,8 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
 
     lower_artifact = bundle.artifact
     compile_artifact = bundle.compile_artifact
-    lower_kir = lower_hir_program_to_kir_v0(hir)
-    compile_kir = lower_hir_program_to_kir_v0(hir)
+    lower_kir = bundle.kir
+    compile_kir = bundle.kir
 
     return CompileResultV1(
         metadata=CompileMetadataV1(contract_version="front-half-v1", frontend_entry=frontend_entry),

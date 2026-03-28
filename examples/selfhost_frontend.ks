@@ -1049,7 +1049,7 @@ fn build_print_many_json_2(text1, text2) {
   );
 }
 
-fn build_pipeline_bundle_json(ast_json, hir_json, artifact_json) {
+fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, artifact_json) {
   return concat(
     "{\"kind\":\"pipeline_bundle\",\"ast\":",
     concat(
@@ -1059,8 +1059,14 @@ fn build_pipeline_bundle_json(ast_json, hir_json, artifact_json) {
         concat(
           hir_json,
           concat(
-            ",\"check\":\"ok\",\"artifact\":",
-            concat(artifact_json, concat(",\"compile\":", concat(artifact_json, "}")))
+            ",\"kir\":",
+            concat(
+              kir_json,
+              concat(
+                ",\"check\":\"ok\",\"artifact\":",
+                concat(artifact_json, concat(",\"compile\":", concat(artifact_json, "}")))
+              )
+            )
           )
         )
       )
@@ -2169,6 +2175,20 @@ fn hir(source) {
   }
 }
 
+fn kir(source) {
+  let hir_json = hir(source);
+  if starts_with(hir_json, "error:") {
+    return hir_json;
+  } else {
+    let kir_json = hir_to_kir(hir_json);
+    if eq(kir_json, "") {
+      return "error: unsupported source";
+    } else {
+      return kir_json;
+    }
+  }
+}
+
 fn compile(source) {
   return lower(source);
 }
@@ -2182,11 +2202,16 @@ fn pipeline(source) {
     if starts_with(hir_json, "error:") {
       return hir_json;
     } else {
-      let artifact = lower(source);
-      if starts_with(artifact, "error:") {
-        return artifact;
+      let kir_json = kir(source);
+      if starts_with(kir_json, "error:") {
+        return kir_json;
       } else {
-        return build_pipeline_bundle_json(ast, hir_json, artifact);
+        let artifact = lower(source);
+        if starts_with(artifact, "error:") {
+          return artifact;
+        } else {
+          return build_pipeline_bundle_json(ast, hir_json, kir_json, artifact);
+        }
       }
     }
   }

@@ -447,6 +447,11 @@ class RuntimeTest(unittest.TestCase):
                         {"kind": "print", "expr": {"kind": "string", "value": "hello, world!"}},
                     ],
                 },
+                "kir": {
+                    "kind": "kir",
+                    "effect": "print",
+                    "ops": [{"text": "hello, world!"}],
+                },
                 "check": "ok",
                 "artifact": json.loads(lowered),
                 "compile": json.loads(compiled),
@@ -1078,13 +1083,25 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.lower.hir.functions[0].name, "emit_suffix")
 
+    def test_compile_source_v1_does_not_depend_on_python_kir_lowering(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.compile_result.lower_hir_program_to_kir_v0", side_effect=AssertionError("python kir lowering should not be used")):
+            compiled = compile_source_v1(frontend, source)
+
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(compiled.lower.kir.functions[0].name, "emit_suffix")
+
     def test_parse_selfhost_pipeline_bundle_v1_returns_typed_bundle(self):
         bundle = parse_selfhost_pipeline_bundle_v1(
-            '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+            '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"kir":{"kind":"kir","effect":"print","ops":[{"text":"hello"}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
         )
         self.assertEqual(bundle.raw_check, "ok")
         self.assertEqual(bundle.surface_ast.statements[0].expr.value, "hello")
         self.assertEqual(bundle.hir.statements[0].expr.value, "hello")
+        self.assertEqual(bundle.kir.instructions[0].text, "hello")
         self.assertEqual(bundle.artifact.texts, ["hello"])
         self.assertEqual(bundle.compile_artifact.texts, ["hello"])
 
@@ -1095,29 +1112,29 @@ class RuntimeTest(unittest.TestCase):
     def test_parse_selfhost_pipeline_bundle_v1_rejects_missing_ast(self):
         with self.assertRaises(DiagnosticError):
             parse_selfhost_pipeline_bundle_v1(
-                '{"kind":"pipeline_bundle","hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+                '{"kind":"pipeline_bundle","hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"kir":{"kind":"kir","effect":"print","ops":[{"text":"hello"}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
             )
 
     def test_parse_selfhost_pipeline_bundle_v1_rejects_missing_artifact(self):
         with self.assertRaises(DiagnosticError):
             parse_selfhost_pipeline_bundle_v1(
-                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"check":"ok","compile":{"kind":"print_many","texts":["hello"]}}'
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"kir":{"kind":"kir","effect":"print","ops":[]},"check":"ok","compile":{"kind":"print_many","texts":["hello"]}}'
             )
 
     def test_parse_selfhost_pipeline_bundle_v1_rejects_non_ok_check(self):
         with self.assertRaises(DiagnosticError):
             parse_selfhost_pipeline_bundle_v1(
-                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"check":"error","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"kir":{"kind":"kir","effect":"print","ops":[]},"check":"error","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
             )
 
     def test_parse_selfhost_pipeline_bundle_v1_rejects_mismatched_compile(self):
         with self.assertRaises(DiagnosticError):
             parse_selfhost_pipeline_bundle_v1(
-                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["world"]}}'
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"hir":{"kind":"hir_program","functions":[],"statements":[]},"kir":{"kind":"kir","effect":"print","ops":[]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["world"]}}'
             )
 
     def test_selfhost_pipeline_bundle_v1_to_json_roundtrips(self):
-        raw = '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+        raw = '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"kir":{"kind":"kir","effect":"print","ops":[{"text":"hello"}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
         bundle = parse_selfhost_pipeline_bundle_v1(raw)
         self.assertEqual(json.loads(selfhost_pipeline_bundle_v1_to_json(bundle)), json.loads(raw))
 

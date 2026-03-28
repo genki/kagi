@@ -4,6 +4,8 @@ import json
 
 from .diagnostics import DiagnosticError
 from .hir import hir_program_v1_to_json, lower_surface_program_to_hir_v1
+from .kir import serialize_kir_program_v0
+from .lower_hir_to_kir import lower_hir_program_to_kir_v0
 from .surface_ast import parse_surface_program_v1
 
 def builtin_print_ast(text: object) -> str:
@@ -338,11 +340,25 @@ def builtin_program_ast_to_hir(ast: object) -> str:
     return hir_program_v1_to_json(hir)
 
 
+def builtin_hir_to_kir(hir_raw: object) -> str:
+    if not isinstance(hir_raw, str):
+        return ""
+    try:
+        from .hir import parse_hir_program_v1
+
+        hir = parse_hir_program_v1(hir_raw)
+        kir = lower_hir_program_to_kir_v0(hir)
+    except DiagnosticError:
+        return ""
+    return serialize_kir_program_v0(kir)
+
+
 BOOTSTRAP_BUILTINS = {
     "print_ast": builtin_print_ast,
     "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
     "program_ast_to_hir": builtin_program_ast_to_hir,
+    "hir_to_kir": builtin_hir_to_kir,
     "program_if_expr_print_ast": builtin_program_if_expr_print_ast,
     "program_if_stmt_ast": builtin_program_if_stmt_ast,
     "program_print_concat_ast": builtin_program_print_concat_ast,

@@ -12,7 +12,6 @@ from kagi.surface_ast import parse_surface_program_v1
 
 
 class BundleKirFutureTest(unittest.TestCase):
-    @unittest.expectedFailure
     def test_compile_source_v1_prefers_bundle_kir_over_python_hir_lowering(self):
         frontend_source = "fn pipeline(source) { return source; }"
         surface_ast = parse_surface_program_v1(
@@ -44,7 +43,6 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    @unittest.expectedFailure
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
         raw = json.dumps(
@@ -76,6 +74,6 @@ class BundleKirFutureTest(unittest.TestCase):
         bundle = parse_selfhost_pipeline_bundle_v1(raw)
         self.assertEqual(bundle.kir.instructions[0].expr.value, "hello")
         self.assertEqual(
-            json.loads(selfhost_pipeline_bundle_v1_to_json(bundle))["kir"]["instructions"][0]["expr"]["value"],
-            "hello",
+            json.loads(selfhost_pipeline_bundle_v1_to_json(bundle))["kir"],
+            json.loads(serialize_kir_program_v0(kir)),
         )
