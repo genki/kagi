@@ -9,7 +9,6 @@ from .artifact import artifact_v1_to_json
 from .capir_runtime import (
     execute_and_inspect_capir_artifact,
     execute_capir_artifact,
-    execute_kir_program,
     inspect_capir_artifact,
     inspect_kir_artifact,
 )
@@ -252,7 +251,6 @@ def main() -> None:
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
             compiled = compile_source_v1(frontend_source, program_source)
-            result = execute_kir_program(compiled.lower.kir)
             if args.json:
                 emit_payload(
                     {
@@ -268,11 +266,11 @@ def main() -> None:
                         "kir": inspect_kir_artifact(compiled.lower.kir),
                         "capir": inspect_capir_artifact(compiled.compile_artifact),
                         "artifact": compiled.raw_compile_artifact,
-                        "value": result.output,
+                        "value": compiled.stdout,
                     }
                 )
             else:
-                emit_text(result.output)
+                emit_text(compiled.stdout)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return

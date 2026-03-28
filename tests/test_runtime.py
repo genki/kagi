@@ -1,12 +1,15 @@
 import unittest
 import importlib.util
+import io
 from pathlib import Path
 import subprocess
 import sys
 import json
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 import kagi
+import kagi.cli as cli_module
 from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
@@ -1673,6 +1676,28 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout, "hello, world!\n")
         self.assertEqual(proc.stderr, "")
+
+    def test_cli_selfhost_run_main_path_does_not_call_python_kir_executor(self):
+        root = Path(__file__).resolve().parents[1]
+        stdout = io.StringIO()
+        argv = [
+            "kagi",
+            "selfhost-run",
+            str(root / "examples" / "selfhost_frontend.ks"),
+            str(root / "examples" / "hello_arg_fn.ksrc"),
+        ]
+
+        with patch.object(sys, "argv", argv):
+            with patch.object(
+                cli_module,
+                "execute_kir_program",
+                side_effect=AssertionError("python kir executor should not be used by selfhost-run"),
+                create=True,
+            ):
+                with redirect_stdout(stdout):
+                    cli_module.main()
+
+        self.assertEqual(stdout.getvalue(), "hello, world!\n")
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]

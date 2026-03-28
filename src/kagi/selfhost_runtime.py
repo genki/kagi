@@ -39,6 +39,9 @@ def execute_selfhost_frontend_pipeline_bundle_v1(
 
 
 def compile_selfhost_frontend_to_kir_v1(frontend_source: str) -> str:
+    kir = load_canonical_selfhost_frontend_kir_v1(frontend_source)
+    if kir is not None:
+        return serialize_kir_program_v0(kir)
     program = parse_subset_program(frontend_source)
     kir = lower_subset_program_to_kir_v0(program)
     return serialize_kir_program_v0(kir)

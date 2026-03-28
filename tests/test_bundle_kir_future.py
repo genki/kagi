@@ -65,6 +65,17 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(executor_spy.call_count, 0)
 
+    def test_compile_selfhost_frontend_to_kir_v1_canonical_frontend_does_not_reparse_subset_source(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+
+        with patch("kagi.selfhost_runtime.parse_subset_program", side_effect=AssertionError("canonical freeze should not parse subset source")):
+            with patch("kagi.selfhost_runtime.lower_subset_program_to_kir_v0", side_effect=AssertionError("canonical freeze should not lower subset source")):
+                kir_json = selfhost_runtime.compile_selfhost_frontend_to_kir_v1(frontend_source)
+
+        self.assertIsInstance(kir_json, str)
+        self.assertIn('"kind":"kir"', kir_json)
+
     def test_execute_selfhost_frontend_entry_v1_canonical_frontend_uses_python_kir_executor(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -145,6 +156,38 @@ class BundleKirFutureTest(unittest.TestCase):
         forbidden_helpers = {
             name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical compile path"))
             for name in helper_names
+        }
+
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                **forbidden_helpers,
+            },
+        ):
+            for filename, expected_stdout in cases.items():
+                with self.subTest(case=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    compiled = compile_source_v1(frontend_source, source)
+                    self.assertEqual(compiled.stdout, expected_stdout)
+
+        for name, spy in forbidden_helpers.items():
+            self.assertEqual(spy.call_count, 0, name)
+
+    def test_compile_source_v1_canonical_frontend_does_not_call_python_core_expr_builtins(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        cases = {
+            "hello_concat.ksrc": "hello, world!",
+            "hello_let_concat.ksrc": "hello, world!",
+            "hello_arg_fn.ksrc": "hello, world!",
+            "hello_if.ksrc": "hello, world!",
+            "hello_print_concat.ksrc": "hello, world!",
+        }
+        forbidden_helpers = {
+            "concat": Mock(side_effect=AssertionError("concat should not be used by canonical compile path")),
+            "eq": Mock(side_effect=AssertionError("eq should not be used by canonical compile path")),
         }
 
         with patch.object(

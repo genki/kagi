@@ -181,4 +181,6 @@
    - canonical selfhost compile/run path から Python KIR executor を外した
    - Python KIR executor は direct entry / fallback / oracle に後退した
 5. Stage 5: self-compile / self-freeze 主経路化
-   - Python を bootstrap seed / differential oracle のみにする
+   - 完了
+   - canonical selfhost compile/run/freeze path では Python builtin / KIR executor / subset parser-lowering を主経路から外した
+   - Python は compatibility shim / bootstrap seed / differential oracle 側に後退した
