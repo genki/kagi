@@ -66,6 +66,17 @@
 - KAGI 実装が primary frontend になる
 - frontier summary, capability envelope, module compilation を追加
 
+状態:
+- 未完了
+- Stage 1: host dependency visibility は完了
+  - canonical path がまだ依存する Python host pieces を test と doc の両方で固定した
+  - `tests/test_bundle_kir_future.py`
+  - `README.md` の `Current Self-Hosting Status`
+- 現在の主 blocker:
+  - Python bundle decoder
+  - Python KIR executor
+  - Python string helper builtin 群
+
 ## 当面のマイルストーン
 
 ### M1
@@ -142,3 +153,16 @@
 - 先に `lowering target` を固定する
 - bootstrap syntax は syntax sugar に留める
 - core semantics は Lean 最小核から逸脱しない
+
+## Fully Self-Hosted までの 5 段階
+
+1. Stage 1: host 依存の見える化
+   - test と doc の両方で「なぜまだ fully self-hosted ではないか」を固定する
+2. Stage 2: string helper builtin 縮退
+   - canonical corpus で still required な `subset_builtins.py` 依存を削る
+3. Stage 3: bundle decode の縮退
+   - Python bundle decoder を compatibility shim へ後退させる
+4. Stage 4: KIR runtime の縮退
+   - Python KIR executor を oracle / fallback に後退させる
+5. Stage 5: self-compile / self-freeze 主経路化
+   - Python を bootstrap seed / differential oracle のみにする
