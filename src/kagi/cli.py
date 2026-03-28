@@ -5,17 +5,8 @@ import json
 import sys
 from pathlib import Path
 
-from .artifact import artifact_v1_to_json
-from .capir_runtime import (
-    execute_and_inspect_capir_artifact,
-    execute_capir_artifact,
-    inspect_capir_artifact,
-    inspect_kir_artifact,
-)
-from .compile_result import compile_source_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
-from .hir import inspect_hir_program_v1
 from .ir import action_to_string
 from .selfhost_runtime import compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
@@ -98,6 +89,125 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
     return execute_selfhost_frontend_entry_v1(frontend_source, entry="parse", args=[program_source])
+
+
+def selfhost_metadata_v1() -> dict[str, str]:
+    return {
+        "contract_version": "front-half-v1",
+        "frontend_entry": "pipeline",
+    }
+
+
+def parse_json_text(raw: str, *, phase: str, expected_kind: str | None = None) -> object:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error(phase, f"invalid json: {exc.msg}")
+        ) from exc
+    if expected_kind is not None:
+        if not isinstance(payload, dict) or payload.get("kind") != expected_kind:
+            raise DiagnosticError(
+                diagnostic_from_runtime_error(phase, f"unsupported {expected_kind} payload")
+            )
+    return payload
+
+
+def execute_selfhost_text_entry(frontend_source: str, program_source: str, *, entry: str) -> str:
+    value = execute_selfhost_frontend_entry_v1(frontend_source, entry=entry, args=[program_source])
+    if not isinstance(value, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", f"{entry} entry must return a string")
+        )
+    if value.startswith("error:"):
+        raise DiagnosticError(diagnostic_from_runtime_error("selfhost-pipeline", value))
+    return value
+
+
+def load_selfhost_pipeline_payload(frontend_source: str, program_source: str) -> dict[str, object]:
+    payload = parse_json_text(
+        execute_selfhost_text_entry(frontend_source, program_source, entry="pipeline"),
+        phase="selfhost-pipeline",
+        expected_kind="pipeline_bundle",
+    )
+    assert isinstance(payload, dict)
+    return payload
+
+
+def bundle_field_raw(bundle: dict[str, object], field: str) -> str:
+    if field not in bundle:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", f"missing bundle field: {field}")
+        )
+    return json.dumps(bundle[field], ensure_ascii=False, separators=(",", ":"))
+
+
+def bundle_field_object(bundle: dict[str, object], field: str) -> dict[str, object]:
+    value = bundle.get(field)
+    if not isinstance(value, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", f"{field} must be an object")
+        )
+    return value
+
+
+def artifact_texts_from_raw(raw_artifact: str) -> list[str]:
+    payload = parse_json_text(raw_artifact, phase="selfhost-artifact", expected_kind="print_many")
+    assert isinstance(payload, dict)
+    texts = payload.get("texts")
+    if not isinstance(texts, list) or not all(isinstance(item, str) for item in texts):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-artifact", "print_many requires texts")
+        )
+    return list(texts)
+
+
+def stdout_from_raw_artifact(raw_artifact: str) -> str:
+    return "\n".join(artifact_texts_from_raw(raw_artifact))
+
+
+def capir_from_raw_artifact(raw_artifact: str) -> dict[str, object]:
+    texts = artifact_texts_from_raw(raw_artifact)
+    return {
+        "effect": "print",
+        "ops": [{"text": text} for text in texts],
+        "serialized": "".join(f"print {json.dumps(text, ensure_ascii=False)}\n" for text in texts),
+    }
+
+
+def kir_from_pipeline_payload(bundle: dict[str, object], *, raw_compile: str) -> dict[str, object]:
+    kir = bundle_field_object(bundle, "kir")
+    functions = kir.get("functions")
+    instructions = kir.get("instructions")
+    if isinstance(functions, list) and functions == [] and isinstance(instructions, list):
+        texts: list[str] = []
+        for item in instructions:
+            if not isinstance(item, dict) or item.get("op") != "print":
+                return kir
+            expr = item.get("expr")
+            if not isinstance(expr, dict) or expr.get("kind") != "string":
+                return kir
+            text = expr.get("value")
+            if not isinstance(text, str):
+                return kir
+            texts.append(text)
+        return {
+            "kind": "kir",
+            "effect": "print",
+            "ops": [{"text": text} for text in texts],
+            "stdout": stdout_from_raw_artifact(raw_compile),
+        }
+    return kir
+
+
+def effects_from_pipeline_payload(bundle: dict[str, object]) -> dict[str, object]:
+    analysis = bundle_field_object(bundle, "analysis")
+    effects = analysis.get("effects")
+    if not isinstance(effects, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", "analysis requires effects")
+        )
+    return effects
 
 
 def main() -> None:
@@ -250,27 +360,27 @@ def main() -> None:
     if args.command == "selfhost-run":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            compiled = compile_source_v1(frontend_source, program_source)
             if args.json:
+                bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+                raw_ast = bundle_field_raw(bundle, "ast")
+                raw_compile = bundle_field_raw(bundle, "compile")
                 emit_payload(
                     {
                         "ok": True,
-                        "entry": compiled.metadata.frontend_entry,
-                        "metadata": {
-                            "contract_version": compiled.metadata.contract_version,
-                            "frontend_entry": compiled.metadata.frontend_entry,
-                        },
+                        "entry": "pipeline",
+                        "metadata": selfhost_metadata_v1(),
                         "source": str(args.source),
-                        "ast": compiled.parse.raw_ast,
-                        "hir": inspect_hir_program_v1(compiled.lower.hir),
-                        "kir": inspect_kir_artifact(compiled.lower.kir),
-                        "capir": inspect_capir_artifact(compiled.compile_artifact),
-                        "artifact": compiled.raw_compile_artifact,
-                        "value": compiled.stdout,
+                        "ast": raw_ast,
+                        "hir": bundle_field_object(bundle, "hir"),
+                        "kir": kir_from_pipeline_payload(bundle, raw_compile=raw_compile),
+                        "capir": capir_from_raw_artifact(raw_compile),
+                        "artifact": raw_compile,
+                        "value": stdout_from_raw_artifact(raw_compile),
                     }
                 )
             else:
-                emit_text(compiled.stdout)
+                raw_compile = execute_selfhost_text_entry(frontend_source, program_source, entry="compile")
+                emit_text(stdout_from_raw_artifact(raw_compile))
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return
@@ -278,23 +388,17 @@ def main() -> None:
     if args.command == "selfhost-check":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            compiled = compile_source_v1(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
-                    "entry": compiled.metadata.frontend_entry,
-                    "metadata": {
-                        "contract_version": compiled.metadata.contract_version,
-                        "frontend_entry": compiled.metadata.frontend_entry,
-                    },
+                    "entry": "pipeline",
+                    "metadata": selfhost_metadata_v1(),
                     "source": str(args.source),
-                    "ast": compiled.parse.raw_ast if args.json else None,
-                    "hir": inspect_hir_program_v1(compiled.lower.hir) if args.json else None,
+                    "ast": bundle_field_raw(bundle, "ast") if args.json else None,
+                    "hir": bundle_field_object(bundle, "hir") if args.json else None,
                     "value": "ok",
-                    "effects": {
-                        "program": compiled.check.effects.program_effects,
-                        "functions": compiled.check.effects.function_effects,
-                    },
+                    "effects": effects_from_pipeline_payload(bundle),
                 }
             )
         except DiagnosticError as exc:
@@ -338,19 +442,16 @@ def main() -> None:
     if args.command == "selfhost-emit":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            compiled = compile_source_v1(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
-                    "entry": compiled.metadata.frontend_entry,
-                    "metadata": {
-                        "contract_version": compiled.metadata.contract_version,
-                        "frontend_entry": compiled.metadata.frontend_entry,
-                    },
+                    "entry": "pipeline",
+                    "metadata": selfhost_metadata_v1(),
                     "source": str(args.source),
-                    "ast": compiled.parse.raw_ast,
-                    "hir": inspect_hir_program_v1(compiled.lower.hir),
-                    "artifact": artifact_v1_to_json(compiled.lower.artifact),
+                    "ast": bundle_field_raw(bundle, "ast"),
+                    "hir": bundle_field_object(bundle, "hir"),
+                    "artifact": bundle_field_raw(bundle, "artifact"),
                 }
             )
         except SystemExit:
@@ -362,21 +463,19 @@ def main() -> None:
     if args.command == "selfhost-capir":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            compiled = compile_source_v1(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+            raw_compile = bundle_field_raw(bundle, "compile")
             emit_payload(
                 {
                     "ok": True,
-                    "entry": compiled.metadata.frontend_entry,
-                    "metadata": {
-                        "contract_version": compiled.metadata.contract_version,
-                        "frontend_entry": compiled.metadata.frontend_entry,
-                    },
+                    "entry": "pipeline",
+                    "metadata": selfhost_metadata_v1(),
                     "source": str(args.source),
-                    "ast": compiled.parse.raw_ast,
-                    "hir": inspect_hir_program_v1(compiled.lower.hir),
-                    "artifact": compiled.raw_compile_artifact,
-                    "kir": inspect_kir_artifact(compiled.lower.kir),
-                    "capir": inspect_capir_artifact(compiled.compile_artifact),
+                    "ast": bundle_field_raw(bundle, "ast"),
+                    "hir": bundle_field_object(bundle, "hir"),
+                    "artifact": raw_compile,
+                    "kir": kir_from_pipeline_payload(bundle, raw_compile=raw_compile),
+                    "capir": capir_from_raw_artifact(raw_compile),
                 }
             )
         except SystemExit:

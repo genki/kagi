@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .diagnostics import Diagnostic, DiagnosticError
 from .bootstrap_builders import BOOTSTRAP_BUILTINS
-from .kir_runtime import execute_kir_entry_v0
 from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, lower_subset_program_to_kir_v0
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnSignal, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
 from .subset_builtins import CORE_BUILTINS
@@ -10,6 +9,12 @@ from .subset_typecheck import typecheck_subset_program_v0
 
 
 BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
+
+
+def execute_kir_entry_v0(program, entry, args, *, builtins=None):
+    from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
+
+    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins)
 
 
 def run_subset_program(source: str, *, entry: str, args: list[object]) -> object:

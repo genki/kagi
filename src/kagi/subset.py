@@ -55,6 +55,28 @@ from .subset_eval import (
     run_subset_program_via_kir,
     truthy,
 )
-from .subset_lexer import KEYWORDS, Token, tokenize
-from .subset_parser import Parser, parse_subset_program
 from .subset_typecheck import SubsetTypecheckResultV0, typecheck_subset_program_v0
+
+
+def tokenize(source: str):
+    from .subset_lexer import tokenize as _tokenize
+
+    return _tokenize(source)
+
+
+def parse_subset_program(source: str):
+    from .subset_parser import parse_subset_program as _parse_subset_program
+
+    return _parse_subset_program(source)
+
+
+def __getattr__(name: str):
+    if name in {"KEYWORDS", "Token"}:
+        from .subset_lexer import KEYWORDS, Token
+
+        return {"KEYWORDS": KEYWORDS, "Token": Token}[name]
+    if name == "Parser":
+        from .subset_parser import Parser
+
+        return Parser
+    raise AttributeError(name)

@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import json
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from unittest.mock import patch
 
 import kagi
@@ -277,6 +277,40 @@ class RuntimeTest(unittest.TestCase):
 
     def test_kagi_subset_module_exports_run_subset_program_via_kir(self):
         self.assertTrue(callable(run_subset_program_via_kir))
+
+    def test_import_kagi_package_does_not_eagerly_load_kir_runtime(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, kagi; print('kagi.kir_runtime' in sys.modules)",
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout.strip(), "False")
+
+    def test_import_kagi_cli_does_not_eagerly_load_kir_runtime(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, kagi.cli; print('kagi.kir_runtime' in sys.modules)",
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout.strip(), "False")
 
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(
@@ -1725,6 +1759,109 @@ class RuntimeTest(unittest.TestCase):
                     cli_module.main()
 
         self.assertEqual(stdout.getvalue(), "hello, world!\n")
+
+    def test_cli_canonical_selfhost_commands_do_not_use_typed_compile_helpers(self):
+        root = Path(__file__).resolve().parents[1]
+        cases = (
+            (
+                [
+                    "kagi",
+                    "selfhost-run",
+                    str(root / "examples" / "selfhost_frontend.ks"),
+                    str(root / "examples" / "hello_arg_fn.ksrc"),
+                ],
+                lambda text: self.assertEqual(text, "hello, world!\n"),
+            ),
+            (
+                [
+                    "kagi",
+                    "selfhost-run",
+                    "--json",
+                    str(root / "examples" / "selfhost_frontend.ks"),
+                    str(root / "examples" / "hello.ksrc"),
+                ],
+                lambda text: self.assertEqual(json.loads(text)["value"], "hello, world!"),
+            ),
+            (
+                [
+                    "kagi",
+                    "selfhost-check",
+                    "--json",
+                    str(root / "examples" / "selfhost_frontend.ks"),
+                    str(root / "examples" / "hello_if.ksrc"),
+                ],
+                lambda text: self.assertEqual(json.loads(text)["effects"]["program"], ["print"]),
+            ),
+            (
+                [
+                    "kagi",
+                    "selfhost-emit",
+                    "--json",
+                    str(root / "examples" / "selfhost_frontend.ks"),
+                    str(root / "examples" / "hello_let.ksrc"),
+                ],
+                lambda text: self.assertEqual(json.loads(text)["artifact"], '{"kind":"print_many","texts":["hello, world!"]}'),
+            ),
+            (
+                [
+                    "kagi",
+                    "selfhost-capir",
+                    "--json",
+                    str(root / "examples" / "selfhost_frontend.ks"),
+                    str(root / "examples" / "hello_concat.ksrc"),
+                ],
+                lambda text: self.assertEqual(json.loads(text)["capir"]["serialized"], 'print "hello, world!"\n'),
+            ),
+        )
+
+        for argv, assertion in cases:
+            with self.subTest(command=argv[1], source=argv[-1]):
+                stdout = io.StringIO()
+                with patch.object(sys, "argv", argv):
+                    with ExitStack() as stack:
+                        stack.enter_context(
+                            patch.object(
+                                cli_module,
+                                "compile_source_v1",
+                                side_effect=AssertionError("typed compile path should not be used by canonical cli path"),
+                                create=True,
+                            )
+                        )
+                        stack.enter_context(
+                            patch.object(
+                                cli_module,
+                                "inspect_hir_program_v1",
+                                side_effect=AssertionError("typed hir inspect should not be used by canonical cli path"),
+                                create=True,
+                            )
+                        )
+                        stack.enter_context(
+                            patch.object(
+                                cli_module,
+                                "inspect_kir_artifact",
+                                side_effect=AssertionError("typed kir inspect should not be used by canonical cli path"),
+                                create=True,
+                            )
+                        )
+                        stack.enter_context(
+                            patch.object(
+                                cli_module,
+                                "inspect_capir_artifact",
+                                side_effect=AssertionError("typed capir inspect should not be used by canonical cli path"),
+                                create=True,
+                            )
+                        )
+                        stack.enter_context(
+                            patch.object(
+                                cli_module,
+                                "artifact_v1_to_json",
+                                side_effect=AssertionError("typed artifact encode should not be used by canonical cli path"),
+                                create=True,
+                            )
+                        )
+                        with redirect_stdout(stdout):
+                            cli_module.main()
+                assertion(stdout.getvalue())
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]

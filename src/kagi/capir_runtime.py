@@ -12,7 +12,6 @@ from .kir import (
     kir_program_to_print_artifact,
     serialize_kir_program_v0,
 )
-from .kir_runtime import execute_kir_program_v0
 
 
 @dataclass(frozen=True)
@@ -29,6 +28,14 @@ class CapIRArtifactResult:
 @dataclass(frozen=True)
 class KIRExecutionResult:
     output: str
+
+
+def execute_kir_program_v0(program: KIRProgramV0, *, builtins=None):
+    from .kir_runtime import execute_kir_program_v0 as execute_host_kir_program_v0
+
+    if builtins is None:
+        return execute_host_kir_program_v0(program)
+    return execute_host_kir_program_v0(program, builtins=builtins)
 
 
 def inspect_capir_artifact(artifact: object) -> dict[str, object]:

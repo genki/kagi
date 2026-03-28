@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from .bootstrap_builders import BOOTSTRAP_BUILTINS
-from .kir_runtime import execute_kir_entry_v0
 from .kir import (
     KIRBoolV0,
     KIRCallExprV0,
@@ -21,10 +20,15 @@ from .kir import (
 )
 from .subset_builtins import CORE_BUILTINS
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnStmt, StringLiteral, SubsetProgram, Variable
-from .subset_parser import parse_subset_program
 
 
 SUBSET_KIR_BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
+
+
+def execute_kir_entry_v0(program, entry, args, *, builtins=None):
+    from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
+
+    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins)
 
 
 def lower_subset_program_to_kir_v0(program: SubsetProgram) -> KIRProgramV0:
@@ -86,5 +90,7 @@ def lower_subset_expr_to_kir_v0(expr: Expr) -> KIRExprV0:
 
 
 def execute_subset_entry_via_kir_v0(source: str, *, entry: str, args: list[object]) -> object:
+    from .subset_parser import parse_subset_program
+
     program = lower_subset_program_to_kir_v0(parse_subset_program(source))
     return execute_kir_entry_v0(program, entry, list(args), builtins=SUBSET_KIR_BUILTINS)

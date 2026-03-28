@@ -2,12 +2,38 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .bootstrap_builders import BOOTSTRAP_BUILTINS
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .kir import parse_kir_program_v0, serialize_kir_program_v0
-from .kir_runtime import execute_kir_entry_v0
-from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, execute_subset_entry_via_kir_v0, lower_subset_program_to_kir_v0
 from .selfhost_bundle import SelfhostPipelineBundleV1, build_selfhost_pipeline_bundle_v1, parse_selfhost_pipeline_bundle_v1
-from .subset_parser import parse_subset_program
+from .subset_builtins import CORE_BUILTINS
+
+
+SUBSET_KIR_BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
+
+
+def parse_subset_program(source: str):
+    from .subset_parser import parse_subset_program as parse_subset_program_impl
+
+    return parse_subset_program_impl(source)
+
+
+def lower_subset_program_to_kir_v0(program):
+    from .lower_subset_to_kir import lower_subset_program_to_kir_v0 as lower_subset_program_to_kir_v0_impl
+
+    return lower_subset_program_to_kir_v0_impl(program)
+
+
+def execute_subset_entry_via_kir_v0(source: str, *, entry: str, args: list[object]) -> object:
+    from .lower_subset_to_kir import execute_subset_entry_via_kir_v0 as execute_subset_entry_via_kir_v0_impl
+
+    return execute_subset_entry_via_kir_v0_impl(source, entry=entry, args=args)
+
+
+def execute_kir_entry_v0(program, entry, args, *, builtins=None):
+    from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
+
+    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins)
 
 
 def execute_selfhost_frontend_entry_v1(frontend_source: str, *, entry: str, args: list[object]) -> object:
@@ -43,6 +69,9 @@ def execute_selfhost_frontend_pipeline_bundle_v1(
 
 def compile_selfhost_frontend_to_kir_v1(frontend_source: str) -> str:
     kir = load_canonical_selfhost_frontend_kir_v1(frontend_source)
+    if kir is not None:
+        return serialize_kir_program_v0(kir)
+    kir = try_parse_selfhost_frontend_kir_v1(frontend_source)
     if kir is not None:
         return serialize_kir_program_v0(kir)
     program = parse_subset_program(frontend_source)

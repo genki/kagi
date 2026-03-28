@@ -12,6 +12,7 @@ from kagi.kir import KIRPrintV0, KIRProgramV0, KIRStringV0, serialize_kir_progra
 from kagi.selfhost_analysis import SelfhostAnalysisV1
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 import kagi.selfhost_runtime as selfhost_runtime
+import kagi.subset_builtins as subset_builtins
 from kagi.surface_ast import parse_surface_program_v1
 
 
@@ -309,6 +310,42 @@ class BundleKirFutureTest(unittest.TestCase):
                 self.assertEqual(kir_spy.call_count, 0)
                 self.assertEqual(analysis_spy.call_count, 0)
                 self.assertEqual(compiled.stdout, "hello, world!")
+
+    def test_compile_source_v1_canonical_frontend_does_not_call_python_core_subset_builtins(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        cases = {
+            "hello.ksrc": "hello, world!",
+            "hello_print_concat.ksrc": "hello, world!",
+            "hello_let_string.ksrc": "hello, world!",
+            "hello_let_concat.ksrc": "hello, world!",
+            "hello_twice.ksrc": "hello\nworld",
+            "hello_fn.ksrc": "hello, world!",
+            "hello_arg_fn.ksrc": "hello, world!",
+            "hello_if.ksrc": "hello, world!",
+            "hello_if_stmt.ksrc": "hello, world!",
+        }
+        forbidden_core_builtins = {
+            name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical compile path"))
+            for name in subset_builtins.CORE_BUILTINS
+        }
+
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                **forbidden_core_builtins,
+            },
+        ):
+            for filename, expected_stdout in cases.items():
+                with self.subTest(case=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    compiled = compile_source_v1(frontend_source, source)
+                    self.assertEqual(compiled.stdout, expected_stdout)
+
+        for name, spy in forbidden_core_builtins.items():
+            self.assertEqual(spy.call_count, 0, name)
 
     def test_compile_source_v1_canonical_frontend_examples_do_not_call_python_bootstrap_builders(self):
         root = Path(__file__).resolve().parents[1]
