@@ -43,6 +43,11 @@ self-hosting 用の最小 subset を追加しています。
 - `starts_with`
 - `ends_with`
 - `quote`
+- `line_count`
+- `line_at`
+- `before_substring`
+- `after_substring`
+- `is_identifier`
 - `extract_quoted`
 - `trim`
 
@@ -51,7 +56,7 @@ self-hosting 用の最小 subset を追加しています。
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
 いまは `print "..."` 文を受け付ける極小言語を対象にしています。複数行の `print` 文、`print concat("a","b")` のような最小式、`let x = ...` と `print x`、さらに `eq(...)` と `if(cond, then, else)`、`if cond { ... } else { ... }`、`fn name() { ... }` / `fn name(x) { ... }` と `call name()` / `call name("...")` を処理できます。
 
-現時点では parser の一部を self-hosted 側へ寄せ始めており、単純な `print "..."` 1 行ケースは `examples/selfhost_frontend.ks` 自身が判定して AST を返します。より広い構文はまだ Python seed builtin に fallback します。
+現時点では parser の一部を self-hosted 側へ寄せ始めており、単純な `print "..."` 1 行ケースと、`let x = "..."` / `print x` の 2 行ケースは `examples/selfhost_frontend.ks` 自身が判定して AST を返します。より広い構文はまだ Python seed builtin に fallback します。
 
 Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す AST JSON を typed bridge object に変換します。
 さらに bridge は `TinyProgram -> CapIR fragment` の lowering を持ち、`src/kagi/capir_runtime.py` が tiny fragment を実行します。

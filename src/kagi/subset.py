@@ -242,6 +242,43 @@ def builtin_quote() -> str:
     return '"'
 
 
+def builtin_line_count(text: object) -> int:
+    if not isinstance(text, str):
+        return 0
+    return len([line.strip() for line in text.splitlines() if line.strip()])
+
+
+def builtin_line_at(text: object, index: object) -> str:
+    if not isinstance(text, str) or not isinstance(index, int):
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if index < 0 or index >= len(lines):
+        return ""
+    return lines[index]
+
+
+def builtin_before_substring(text: object, needle: object) -> str:
+    if not isinstance(text, str) or not isinstance(needle, str):
+        return ""
+    pos = text.find(needle)
+    if pos == -1:
+        return ""
+    return text[:pos]
+
+
+def builtin_after_substring(text: object, needle: object) -> str:
+    if not isinstance(text, str) or not isinstance(needle, str):
+        return ""
+    pos = text.find(needle)
+    if pos == -1:
+        return ""
+    return text[pos + len(needle):]
+
+
+def builtin_is_identifier(text: object) -> bool:
+    return isinstance(text, str) and text != "" and text.replace("_", "").isalnum()
+
+
 def builtin_print_ast(text: object) -> str:
     if not isinstance(text, str):
         text = str(text)
@@ -260,6 +297,25 @@ def builtin_program_ast(text: object) -> str:
             "kind": "program",
             "functions": [],
             "statements": [{"kind": "print", "expr": {"kind": "string", "value": text}}],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def builtin_program_let_print_ast(name: object, text: object) -> str:
+    if not isinstance(name, str):
+        name = str(name)
+    if not isinstance(text, str):
+        text = str(text)
+    return json.dumps(
+        {
+            "kind": "program",
+            "functions": [],
+            "statements": [
+                {"kind": "let", "name": name, "expr": {"kind": "string", "value": text}},
+                {"kind": "print", "expr": {"kind": "var", "name": name}},
+            ],
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -765,14 +821,20 @@ def eval_tiny_body(
 
 
 BUILTINS = {
+    "after_substring": builtin_after_substring,
+    "before_substring": builtin_before_substring,
     "eq": builtin_eq,
     "concat": builtin_concat,
     "ends_with": builtin_ends_with,
     "extract_quoted": builtin_extract_quoted,
+    "is_identifier": builtin_is_identifier,
+    "line_at": builtin_line_at,
+    "line_count": builtin_line_count,
     "lower_program_artifact": builtin_lower_program_artifact,
     "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
     "program_ast": builtin_program_ast,
+    "program_let_print_ast": builtin_program_let_print_ast,
     "program_text": builtin_program_text,
     "quote": builtin_quote,
     "starts_with": builtin_starts_with,

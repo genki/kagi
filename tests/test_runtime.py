@@ -218,6 +218,25 @@ class RuntimeTest(unittest.TestCase):
             },
         )
 
+    def test_subset_builtins_program_let_print_ast_matches_current_shape(self):
+        source = """
+        fn main() {
+            return program_let_print_ast("greeting", "hello, world!");
+        }
+        """
+        value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(
+            json.loads(value),
+            {
+                "kind": "program",
+                "functions": [],
+                "statements": [
+                    {"kind": "let", "name": "greeting", "expr": {"kind": "string", "value": "hello, world!"}},
+                    {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                ],
+            },
+        )
+
     def test_selfhost_frontend_emits_hello_world(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -326,6 +345,23 @@ class RuntimeTest(unittest.TestCase):
             },
         )
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
+    def test_selfhost_frontend_selfhosts_simple_let_string_print(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_let_string.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "functions": [],
+                "statements": [
+                    {"kind": "let", "name": "greeting", "expr": {"kind": "string", "value": "hello, world!"}},
+                    {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                ],
+            },
+        )
 
     def test_capir_fragment_can_be_recovered_from_selfhost_artifact(self):
         artifact = '{"kind":"print_many","texts":["hello","world"]}'
@@ -571,6 +607,30 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(payload["value"], "hello, world!")
         self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
         self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
+
+    def test_cli_selfhost_run_outputs_simple_let_string_expression(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_let_string.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
 
     def test_cli_selfhost_run_outputs_function_call(self):
         root = Path(__file__).resolve().parents[1]

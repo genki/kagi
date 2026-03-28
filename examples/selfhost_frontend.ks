@@ -19,14 +19,53 @@ fn try_parse_single_print(source) {
   }
 }
 
+fn try_parse_simple_let_print(source) {
+  let text = trim(source);
+  if eq(line_count(text), 2) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let q = quote();
+    let delim = concat(" = ", q);
+    if starts_with(line1, "let ") {
+      let rest = after_substring(line1, "let ");
+      let name = before_substring(rest, delim);
+      let quoted = extract_quoted(line1);
+      let rebuilt1 = concat("let ", concat(name, concat(delim, concat(quoted, q))));
+      let rebuilt2 = concat("print ", name);
+      if is_identifier(name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            return program_let_print_ast(name, quoted);
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
 fn parse(source) {
   let simple = try_parse_single_print(source);
   if eq(simple, "") {
-    let ast = parse_print_program(source);
-    if eq(ast, "") {
-      return "error: expected quoted string";
+    let simple_let = try_parse_simple_let_print(source);
+    if eq(simple_let, "") {
+      let ast = parse_print_program(source);
+      if eq(ast, "") {
+        return "error: expected quoted string";
+      } else {
+        return ast;
+      }
     } else {
-      return ast;
+      return simple_let;
     }
   } else {
     return simple;
