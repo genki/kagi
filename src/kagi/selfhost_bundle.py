@@ -28,6 +28,47 @@ class SelfhostPipelineBundleV1:
     compile_artifact: PrintArtifactV1
 
 
+def build_selfhost_pipeline_bundle_v1(
+    *,
+    raw_ast: str,
+    raw_hir: str,
+    raw_kir: str,
+    raw_analysis: str,
+    raw_check: str,
+    raw_artifact: str,
+    raw_compile: str,
+) -> SelfhostPipelineBundleV1:
+    if raw_check != "ok":
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", "unsupported check payload")
+        )
+
+    artifact = parse_artifact_v1(raw_artifact)
+    compile_artifact = parse_artifact_v1(raw_compile)
+    kir = parse_kir_program_v0(raw_kir)
+    analysis = parse_selfhost_analysis_v1(raw_analysis)
+    if artifact != compile_artifact:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", "inconsistent bundle payload")
+        )
+
+    return SelfhostPipelineBundleV1(
+        raw_ast=raw_ast,
+        raw_hir=raw_hir,
+        raw_kir=raw_kir,
+        raw_analysis=raw_analysis,
+        raw_check=raw_check,
+        raw_artifact=raw_artifact,
+        raw_compile=raw_compile,
+        surface_ast=parse_surface_program_v1(raw_ast),
+        hir=parse_hir_program_v1(raw_hir),
+        kir=kir,
+        analysis=analysis,
+        artifact=artifact,
+        compile_artifact=compile_artifact,
+    )
+
+
 def _bundle_value_to_raw(value: object) -> str:
     if isinstance(value, str):
         return value
@@ -62,21 +103,7 @@ def parse_selfhost_pipeline_bundle_v1(bundle_raw: object) -> SelfhostPipelineBun
     raw_artifact = _bundle_value_to_raw(bundle.get("artifact"))
     raw_compile = _bundle_value_to_raw(bundle.get("compile"))
 
-    if raw_check != "ok":
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-pipeline", "unsupported check payload")
-        )
-
-    artifact = parse_artifact_v1(raw_artifact)
-    compile_artifact = parse_artifact_v1(raw_compile)
-    kir = parse_kir_program_v0(raw_kir)
-    analysis = parse_selfhost_analysis_v1(raw_analysis)
-    if artifact != compile_artifact:
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-pipeline", "inconsistent bundle payload")
-        )
-
-    return SelfhostPipelineBundleV1(
+    return build_selfhost_pipeline_bundle_v1(
         raw_ast=raw_ast,
         raw_hir=raw_hir,
         raw_kir=raw_kir,
@@ -84,12 +111,6 @@ def parse_selfhost_pipeline_bundle_v1(bundle_raw: object) -> SelfhostPipelineBun
         raw_check=raw_check,
         raw_artifact=raw_artifact,
         raw_compile=raw_compile,
-        surface_ast=parse_surface_program_v1(raw_ast),
-        hir=parse_hir_program_v1(raw_hir),
-        kir=kir,
-        analysis=analysis,
-        artifact=artifact,
-        compile_artifact=compile_artifact,
     )
 
 

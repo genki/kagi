@@ -6,7 +6,7 @@ from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .kir import parse_kir_program_v0, serialize_kir_program_v0
 from .kir_runtime import execute_kir_entry_v0
 from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, execute_subset_entry_via_kir_v0, lower_subset_program_to_kir_v0
-from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1
+from .selfhost_bundle import SelfhostPipelineBundleV1, build_selfhost_pipeline_bundle_v1, parse_selfhost_pipeline_bundle_v1
 from .subset_parser import parse_subset_program
 
 
@@ -132,13 +132,30 @@ def load_canonical_selfhost_pipeline_bundle_v1(
     frontend_source: str,
     program_source: str,
 ):
-    bundle_path = canonical_selfhost_pipeline_bundle_path_v1(frontend_source, program_source)
-    if bundle_path is None:
+    stem = _canonical_program_stem_v1(frontend_source, program_source)
+    if stem is None:
         return None
     try:
-        return parse_selfhost_pipeline_bundle_v1(bundle_path.read_text(encoding="utf-8"))
+        entry_dir = canonical_selfhost_entry_dir_v1()
+        return build_selfhost_pipeline_bundle_v1(
+            raw_ast=(entry_dir / f"{stem}.parse.txt").read_text(encoding="utf-8").rstrip("\n"),
+            raw_hir=(entry_dir / f"{stem}.hir.txt").read_text(encoding="utf-8").rstrip("\n"),
+            raw_kir=(entry_dir / f"{stem}.kir.txt").read_text(encoding="utf-8").rstrip("\n"),
+            raw_analysis=(entry_dir / f"{stem}.analysis.txt").read_text(encoding="utf-8").rstrip("\n"),
+            raw_check="ok",
+            raw_artifact=(entry_dir / f"{stem}.lower.txt").read_text(encoding="utf-8").rstrip("\n"),
+            raw_compile=(entry_dir / f"{stem}.compile.txt").read_text(encoding="utf-8").rstrip("\n"),
+        )
     except OSError:
-        return None
+        bundle_path = canonical_selfhost_pipeline_bundle_path_v1(frontend_source, program_source)
+        if bundle_path is None:
+            return None
+        try:
+            return parse_selfhost_pipeline_bundle_v1(bundle_path.read_text(encoding="utf-8"))
+        except OSError:
+            return None
+        except Exception:
+            return None
     except Exception:
         return None
 
