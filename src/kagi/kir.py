@@ -119,6 +119,189 @@ def kir_program_from_print_artifact(artifact: PrintArtifactV1) -> KIRProgramV0:
     return KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value=text)) for text in artifact.texts])
 
 
+def parse_kir_program_v0(raw: object) -> KIRProgramV0:
+    if not isinstance(raw, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir program must be a string")
+        )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", f"invalid kir json: {exc.msg}")
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("kind") != "kir":
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "unsupported kir payload")
+        )
+    if payload.get("effect") == "print":
+        ops = payload.get("ops", [])
+        if not isinstance(ops, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "print kir program requires ops")
+            )
+        return KIRProgramV0(
+            instructions=[
+                KIRPrintV0(expr=KIRStringV0(value=_parse_print_op(item)))
+                for item in ops
+            ]
+        )
+
+    functions = payload.get("functions", [])
+    instructions = payload.get("instructions", [])
+    if not isinstance(functions, list) or not isinstance(instructions, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir program requires functions and instructions")
+        )
+    return KIRProgramV0(
+        instructions=[parse_kir_stmt_v0(item) for item in instructions],
+        functions=[parse_kir_function_v0(item) for item in functions],
+    )
+
+
+def parse_kir_function_v0(raw: object) -> KIRFunctionV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir function must be an object")
+        )
+    name = raw.get("name")
+    params = raw.get("params", [])
+    body = raw.get("body")
+    if not isinstance(name, str) or not isinstance(params, list) or not isinstance(body, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir function requires name, params, and body")
+        )
+    if not all(isinstance(param, str) and param for param in params):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir function params must be strings")
+        )
+    return KIRFunctionV0(
+        name=name,
+        params=list(params),
+        body=[parse_kir_stmt_v0(item) for item in body],
+    )
+
+
+def parse_kir_stmt_v0(raw: object) -> KIRStmtV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir statement must be an object")
+        )
+    op = raw.get("op")
+    if op == "print":
+        return KIRPrintV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "let":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir let requires name")
+            )
+        return KIRLetV0(name=name, expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "if":
+        then_body = raw.get("then")
+        else_body = raw.get("else")
+        if not isinstance(then_body, list) or not isinstance(else_body, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir if requires bodies")
+            )
+        return KIRIfStmtV0(
+            condition=parse_kir_expr_v0(raw.get("condition")),
+            then_body=[parse_kir_stmt_v0(item) for item in then_body],
+            else_body=[parse_kir_stmt_v0(item) for item in else_body],
+        )
+    if op == "call":
+        name = raw.get("name")
+        args = raw.get("args", [])
+        if not isinstance(name, str) or not isinstance(args, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir call requires name and args")
+            )
+        return KIRCallV0(name=name, args=[parse_kir_expr_v0(item) for item in args])
+    if op == "return":
+        return KIRReturnV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "expr":
+        return KIRExprStmtV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("kir", "unsupported kir statement")
+    )
+
+
+def parse_kir_expr_v0(raw: object) -> KIRExprV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir expression must be an object")
+        )
+    kind = raw.get("kind")
+    if kind == "string":
+        value = raw.get("value")
+        if not isinstance(value, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir string requires value")
+            )
+        return KIRStringV0(value=value)
+    if kind == "bool":
+        value = raw.get("value")
+        if not isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir bool requires value")
+            )
+        return KIRBoolV0(value=value)
+    if kind == "int":
+        value = raw.get("value")
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir int requires value")
+            )
+        return KIRIntV0(value=value)
+    if kind == "var":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir var requires name")
+            )
+        return KIRVarV0(name=name)
+    if kind == "concat":
+        return KIRConcatV0(
+            left=parse_kir_expr_v0(raw.get("left")),
+            right=parse_kir_expr_v0(raw.get("right")),
+        )
+    if kind == "eq":
+        return KIREqV0(
+            left=parse_kir_expr_v0(raw.get("left")),
+            right=parse_kir_expr_v0(raw.get("right")),
+        )
+    if kind == "if":
+        return KIRIfExprV0(
+            condition=parse_kir_expr_v0(raw.get("condition")),
+            then_expr=parse_kir_expr_v0(raw.get("then")),
+            else_expr=parse_kir_expr_v0(raw.get("else")),
+        )
+    if kind == "call_expr":
+        callee = raw.get("callee")
+        args = raw.get("args", [])
+        if not isinstance(callee, str) or not isinstance(args, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir call_expr requires callee and args")
+            )
+        return KIRCallExprV0(callee=callee, args=[parse_kir_expr_v0(item) for item in args])
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("kir", "unsupported kir expression")
+    )
+
+
+def _parse_print_op(raw: object) -> str:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "print ops must be objects")
+        )
+    text = raw.get("text")
+    if not isinstance(text, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "print ops require text")
+        )
+    return text
+
+
 def kir_program_to_print_artifact(program: KIRProgramV0) -> PrintArtifactV1:
     if not _is_print_only_program(program):
         raise DiagnosticError(
@@ -230,3 +413,174 @@ def serialize_kir_program(program: KIRProgramV0) -> str:
 
 def execute_kir_program(program: KIRProgramV0) -> str:
     return artifact_v1_stdout(kir_program_to_print_artifact(program))
+
+
+def parse_kir_program_v0(raw: object) -> KIRProgramV0:
+    if not isinstance(raw, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir program must be a string")
+        )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", f"invalid kir json: {exc.msg}")
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("kind") != "kir":
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "unsupported kir payload")
+        )
+    if payload.get("effect") == "print":
+        ops = payload.get("ops", [])
+        if not isinstance(ops, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "print kir requires ops")
+            )
+        instructions: list[KIRStmtV0] = []
+        for item in ops:
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str):
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("kir", "print kir ops require text")
+                )
+            instructions.append(KIRPrintV0(expr=KIRStringV0(value=item["text"])))
+        return KIRProgramV0(instructions=instructions, functions=[])
+    functions = payload.get("functions", [])
+    instructions = payload.get("instructions", [])
+    if not isinstance(functions, list) or not isinstance(instructions, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir program requires functions and instructions")
+        )
+    return KIRProgramV0(
+        instructions=[parse_kir_stmt_v0(item) for item in instructions],
+        functions=[parse_kir_function_v0(item) for item in functions],
+    )
+
+
+def parse_kir_function_v0(raw: object) -> KIRFunctionV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir function must be an object")
+        )
+    name = raw.get("name")
+    params = raw.get("params", [])
+    body = raw.get("body", [])
+    if not isinstance(name, str) or not isinstance(params, list) or not isinstance(body, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir function requires name, params, and body")
+        )
+    if not all(isinstance(param, str) and param for param in params):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir params must be strings")
+        )
+    return KIRFunctionV0(
+        name=name,
+        params=list(params),
+        body=[parse_kir_stmt_v0(item) for item in body],
+    )
+
+
+def parse_kir_stmt_v0(raw: object) -> KIRStmtV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir statement must be an object")
+        )
+    op = raw.get("op")
+    if op == "print":
+        return KIRPrintV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "let":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir let requires name")
+            )
+        return KIRLetV0(name=name, expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "if":
+        then_body = raw.get("then", [])
+        else_body = raw.get("else", [])
+        if not isinstance(then_body, list) or not isinstance(else_body, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir if requires then/else lists")
+            )
+        return KIRIfStmtV0(
+            condition=parse_kir_expr_v0(raw.get("condition")),
+            then_body=[parse_kir_stmt_v0(item) for item in then_body],
+            else_body=[parse_kir_stmt_v0(item) for item in else_body],
+        )
+    if op == "call":
+        name = raw.get("name")
+        args = raw.get("args", [])
+        if not isinstance(name, str) or not isinstance(args, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir call requires name and args")
+            )
+        return KIRCallV0(name=name, args=[parse_kir_expr_v0(item) for item in args])
+    if op == "return":
+        return KIRReturnV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    if op == "expr":
+        return KIRExprStmtV0(expr=parse_kir_expr_v0(raw.get("expr")))
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("kir", "unsupported kir statement")
+    )
+
+
+def parse_kir_expr_v0(raw: object) -> KIRExprV0:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "kir expression must be an object")
+        )
+    kind = raw.get("kind")
+    if kind == "string":
+        value = raw.get("value")
+        if not isinstance(value, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir string requires value")
+            )
+        return KIRStringV0(value=value)
+    if kind == "bool":
+        value = raw.get("value")
+        if not isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir bool requires value")
+            )
+        return KIRBoolV0(value=value)
+    if kind == "int":
+        value = raw.get("value")
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir int requires integer value")
+            )
+        return KIRIntV0(value=value)
+    if kind == "var":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir var requires name")
+            )
+        return KIRVarV0(name=name)
+    if kind == "concat":
+        return KIRConcatV0(
+            left=parse_kir_expr_v0(raw.get("left")),
+            right=parse_kir_expr_v0(raw.get("right")),
+        )
+    if kind == "eq":
+        return KIREqV0(
+            left=parse_kir_expr_v0(raw.get("left")),
+            right=parse_kir_expr_v0(raw.get("right")),
+        )
+    if kind == "if":
+        return KIRIfExprV0(
+            condition=parse_kir_expr_v0(raw.get("condition")),
+            then_expr=parse_kir_expr_v0(raw.get("then")),
+            else_expr=parse_kir_expr_v0(raw.get("else")),
+        )
+    if kind == "call_expr":
+        callee = raw.get("callee")
+        args = raw.get("args", [])
+        if not isinstance(callee, str) or not isinstance(args, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir", "kir call_expr requires callee and args")
+            )
+        return KIRCallExprV0(callee=callee, args=[parse_kir_expr_v0(item) for item in args])
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("kir", "unsupported kir expression")
+    )
