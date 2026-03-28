@@ -7,6 +7,7 @@ import json
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_program_ir
+from kagi.selfhost import lower_tiny_program, parse_tiny_program_ast_json, render_tiny_program
 from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
     Cell,
@@ -214,6 +215,10 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(json.loads(lowered), {"kind": "print", "text": "hello, world!"})
         self.assertEqual(json.loads(compiled), {"kind": "print", "text": "hello, world!"})
 
+        tiny_program = parse_tiny_program_ast_json(ast)
+        self.assertEqual(lower_tiny_program(tiny_program), lowered)
+        self.assertEqual(render_tiny_program(tiny_program), "hello, world!")
+
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -327,6 +332,8 @@ class RuntimeTest(unittest.TestCase):
         invalid_payload = __import__("json").loads(invalid_proc.stdout)
 
         self.assertEqual(parse_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
+        self.assertEqual(check_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
+        self.assertEqual(emit_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
         self.assertEqual(check_payload["value"], "ok")
         self.assertEqual(emit_payload["artifact"], '{"kind":"print","text":"hello, world!"}')
         self.assertFalse(invalid_payload["ok"])

@@ -9,6 +9,7 @@ from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
+from .selfhost import lower_tiny_program, parse_tiny_program_ast_json, render_tiny_program
 from .subset import run_subset_program
 
 
@@ -50,33 +51,6 @@ def add_json_flag(command_parser: argparse.ArgumentParser) -> None:
 
 def emit_payload(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-
-
-def render_selfhost_artifact(artifact: object) -> str:
-    if not isinstance(artifact, str):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("subset-runtime", "selfhost artifact must be a string")
-        )
-    if artifact.startswith("error:"):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("subset-runtime", artifact)
-        )
-    try:
-        payload = json.loads(artifact)
-    except json.JSONDecodeError as exc:
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("subset-runtime", f"invalid selfhost artifact json: {exc.msg}")
-        ) from exc
-    if not isinstance(payload, dict) or payload.get("kind") != "print":
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("subset-runtime", "unsupported selfhost artifact")
-        )
-    text = payload.get("text")
-    if not isinstance(text, str):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("subset-runtime", "print artifact requires string text")
-        )
-    return text
 
 
 def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
@@ -248,13 +222,16 @@ def main() -> None:
         try:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
+            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
+            tiny_program = parse_tiny_program_ast_json(ast)
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            value = render_selfhost_artifact(artifact)
+            value = render_tiny_program(tiny_program)
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
+                    "ast": ast,
                     "artifact": artifact,
                     "value": value,
                 }
@@ -267,13 +244,20 @@ def main() -> None:
         try:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            ok = value == "ok"
+            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
+            if isinstance(ast, str) and ast.startswith("error:"):
+                value = ast
+                ok = False
+            else:
+                parse_tiny_program_ast_json(ast)
+                value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+                ok = value == "ok"
             emit_payload(
                 {
                     "ok": ok,
                     "entry": args.entry,
                     "source": str(args.source),
+                    "ast": None if isinstance(ast, str) and ast.startswith("error:") else ast,
                     "value": value,
                 }
             )
@@ -311,16 +295,24 @@ def main() -> None:
         try:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
+            if isinstance(ast, str) and ast.startswith("error:"):
+                value = ast
+                ok = False
+            else:
+                tiny_program = parse_tiny_program_ast_json(ast)
+                value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+                ok = value == lower_tiny_program(tiny_program)
             emit_payload(
                 {
-                    "ok": not str(value).startswith("error:"),
+                    "ok": ok,
                     "entry": args.entry,
                     "source": str(args.source),
+                    "ast": None if isinstance(ast, str) and ast.startswith("error:") else ast,
                     "artifact": value,
                 }
             )
-            if str(value).startswith("error:"):
+            if not ok:
                 raise SystemExit(1)
         except SystemExit:
             raise

@@ -48,14 +48,16 @@ self-hosting 用の最小 subset を追加しています。
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
 いまは `print "..."` だけを受け付ける極小言語を対象にしています。
 
+Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す AST JSON を typed bridge object に変換します。
+
 役割は 3 つに分けています。
 
 - `parse(source)`:
   - tiny source から最小 program AST JSON を作る
 - `check(source)`:
-  - tiny source を受理できるか判定する
+  - program AST を bridge で受けたうえで tiny source を受理できるか判定する
 - `lower(source)`:
-  - program AST を経由して最小 JSON artifact を作る
+  - program AST を bridge で受けて最小 JSON artifact を作る
 - `compile(source)`:
   - 現在は `lower(source)` の alias
 
@@ -74,6 +76,7 @@ kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/
   "ok": true,
   "entry": "lower",
   "source": "/home/vagrant/kagi/examples/hello.ksrc",
+  "ast": "{\"kind\":\"program\",\"statements\":[{\"kind\":\"print\",\"text\":\"hello, world!\"}]}",
   "artifact": "{\"kind\":\"print\",\"text\":\"hello, world!\"}"
 }
 ```

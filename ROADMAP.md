@@ -91,6 +91,7 @@
 - tiny frontend に `check / lower / compile` を追加
 - `print "..."` を JSON artifact へ lower できる
 - tiny frontend に `parse` を追加し、program AST JSON を返せる
+- Python 側の bridge が AST JSON を typed object として受けられる
 
 ## 非目標
 
