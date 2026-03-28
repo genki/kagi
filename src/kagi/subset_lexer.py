@@ -53,6 +53,11 @@ def tokenize(source: str) -> list[Token]:
                 index += 1
                 column += 1
             continue
+        if ch == "-" and index + 1 < len(source) and source[index + 1] == ">":
+            tokens.append(Token("ARROW", "->", line, column, snippet_for(line)))
+            index += 2
+            column += 2
+            continue
         if ch.isalpha() or ch == "_":
             start = index
             start_col = column
@@ -107,6 +112,7 @@ def tokenize(source: str) -> list[Token]:
             "{": "LBRACE",
             "}": "RBRACE",
             ",": "COMMA",
+            ":": "COLON",
             ";": "SEMICOLON",
             "=": "EQUAL",
         }

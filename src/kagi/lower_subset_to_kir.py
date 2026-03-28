@@ -35,7 +35,7 @@ def lower_subset_program_to_kir_v0(program: SubsetProgram) -> KIRProgramV0:
 def lower_subset_function_to_kir_v0(fn: FunctionDef) -> KIRFunctionV0:
     return KIRFunctionV0(
         name=fn.name,
-        params=list(fn.params),
+        params=[param.name for param in fn.params],
         body=[lower_subset_stmt_to_kir_v0(stmt) for stmt in fn.body],
     )
 

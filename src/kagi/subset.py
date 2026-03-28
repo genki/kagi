@@ -7,6 +7,7 @@ from .subset_ast import (
     IfStmt,
     IntLiteral,
     LetStmt,
+    ParamDef,
     ReturnSignal,
     ReturnStmt,
     Stmt,
@@ -56,3 +57,4 @@ from .subset_eval import (
 )
 from .subset_lexer import KEYWORDS, Token, tokenize
 from .subset_parser import Parser, parse_subset_program
+from .subset_typecheck import SubsetTypecheckResultV0, typecheck_subset_program_v0

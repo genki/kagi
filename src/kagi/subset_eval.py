@@ -6,6 +6,7 @@ from .kir_runtime import execute_kir_entry_v0
 from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, lower_subset_program_to_kir_v0
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnSignal, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
 from .subset_builtins import CORE_BUILTINS
+from .subset_typecheck import typecheck_subset_program_v0
 
 
 BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
@@ -15,6 +16,7 @@ def run_subset_program(source: str, *, entry: str, args: list[object]) -> object
     from .subset_parser import parse_subset_program
 
     program = parse_subset_program(source)
+    typecheck_subset_program_v0(program, entry=entry, args=args)
     functions = {fn.name: fn for fn in program.functions}
     if entry not in functions:
         raise DiagnosticError(
@@ -34,6 +36,7 @@ def run_subset_program_via_kir(source: str, *, entry: str, args: list[object]) -
     from .subset_parser import parse_subset_program
 
     program = parse_subset_program(source)
+    typecheck_subset_program_v0(program, entry=entry, args=args)
     kir = lower_subset_program_to_kir_v0(program)
     return execute_kir_entry_v0(kir, entry=entry, args=list(args), builtins=SUBSET_KIR_BUILTINS)
 
@@ -50,7 +53,7 @@ def eval_function(functions: dict[str, FunctionDef], fn: FunctionDef, args: list
                 snippet=None,
             )
         )
-    env = dict(zip(fn.params, args))
+    env = {param.name: arg for param, arg in zip(fn.params, args)}
     result = eval_block(functions, fn.body, env)
     if isinstance(result, ReturnSignal):
         return result.value

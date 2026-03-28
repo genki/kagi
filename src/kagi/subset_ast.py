@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+TypeRef = str
+
+
 @dataclass(frozen=True)
 class StringLiteral:
     value: str
@@ -59,10 +62,17 @@ Stmt = LetStmt | ReturnStmt | IfStmt | ExprStmt
 
 
 @dataclass(frozen=True)
+class ParamDef:
+    name: str
+    type_ref: TypeRef | None = None
+
+
+@dataclass(frozen=True)
 class FunctionDef:
     name: str
-    params: list[str]
+    params: list[ParamDef]
     body: list[Stmt]
+    return_type: TypeRef | None = None
 
 
 @dataclass(frozen=True)

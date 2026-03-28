@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .diagnostics import Diagnostic, DiagnosticError
-from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
+from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ParamDef, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
 from .subset_lexer import Token, tokenize
 
 
@@ -22,14 +22,24 @@ class Parser:
         self.expect("FN")
         name = self.expect("IDENT").value
         self.expect("LPAREN")
-        params: list[str] = []
+        params: list[ParamDef] = []
         if self.peek().kind != "RPAREN":
-            params.append(self.expect("IDENT").value)
+            params.append(self.parse_param())
             while self.match("COMMA"):
-                params.append(self.expect("IDENT").value)
+                params.append(self.parse_param())
         self.expect("RPAREN")
+        return_type = None
+        if self.match("ARROW"):
+            return_type = self.expect("IDENT").value
         body = self.parse_block()
-        return FunctionDef(name=name, params=params, body=body)
+        return FunctionDef(name=name, params=params, body=body, return_type=return_type)
+
+    def parse_param(self) -> ParamDef:
+        name = self.expect("IDENT").value
+        type_ref = None
+        if self.match("COLON"):
+            type_ref = self.expect("IDENT").value
+        return ParamDef(name=name, type_ref=type_ref)
 
     def parse_block(self) -> list[Stmt]:
         self.expect("LBRACE")

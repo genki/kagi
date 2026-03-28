@@ -21,7 +21,8 @@ from .runtime import (
 )
 from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 from .surface_ast import SurfaceFunctionV1, SurfaceProgramV1
-from .subset import FunctionDef, SubsetProgram, parse_subset_program, run_subset_program
+from .subset import FunctionDef, ParamDef, SubsetProgram, parse_subset_program, run_subset_program, run_subset_program_via_kir, typecheck_subset_program_v0
+from .subset_typecheck import SubsetTypecheckResultV0
 from .typecheck import TypecheckedProgramV1, typecheck_program_v1
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "EffectSummaryV1",
     "ExecutionResult",
     "FunctionDef",
+    "ParamDef",
     "Heap",
     "HIRFunctionV1",
     "HIRProgramV1",
@@ -56,6 +58,7 @@ __all__ = [
     "SurfaceFunctionV1",
     "SurfaceProgramV1",
     "SubsetProgram",
+    "SubsetTypecheckResultV0",
     "TypecheckedProgramV1",
     "action_to_string",
     "apply_action",
@@ -81,10 +84,12 @@ __all__ = [
     "parse_subset_program",
     "resolve_hir_program_v1",
     "run_subset_program",
+    "run_subset_program_via_kir",
     "serialize_program_ir",
     "serialize_capir_fragment",
     "serialize_kir_program_v0",
     "selfhost_pipeline_bundle_v1_to_json",
+    "typecheck_subset_program_v0",
     "typecheck_program_v1",
     "well_formed",
 ]
