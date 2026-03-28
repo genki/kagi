@@ -17,8 +17,8 @@ from .compile_result import compile_source_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
+from .lower_subset_to_kir import execute_subset_entry_via_kir_v0
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
-from .subset import run_subset_program
 
 
 def heap_to_json(result: ExecutionResult) -> dict:
@@ -97,7 +97,7 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
-    return run_subset_program(frontend_source, entry="parse", args=[program_source])
+    return execute_subset_entry_via_kir_v0(frontend_source, entry="parse", args=[program_source])
 
 
 def main() -> None:

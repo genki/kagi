@@ -21,7 +21,7 @@ from kagi.ir import serialize_capir_fragment, serialize_program_ir
 from kagi.kir import inspect_kir_artifact, kir_program_from_print_artifact, serialize_kir_program_v0
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 import kagi.subset as subset_module
-from kagi.subset import parse_subset_program, run_subset_program
+from kagi.subset import parse_subset_program, run_subset_program, run_subset_program_via_kir
 from kagi.artifact import parse_artifact_v1
 from kagi.runtime import (
     Cell,
@@ -212,6 +212,28 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(len(program.functions), 1)
         value = run_subset_program(source, entry="main", args=["world!"])
         self.assertEqual(value, "hello, world!")
+
+    def test_subset_program_via_kir_matches_interpreter(self):
+        source = """
+        fn main(flag, name) {
+            let suffix = if(flag, "!", "?");
+            let greeting = concat("hello, ", name);
+            return concat(greeting, suffix);
+        }
+        """
+        expected = run_subset_program(source, entry="main", args=[True, "world"])
+        actual = run_subset_program_via_kir(source, entry="main", args=[True, "world"])
+        self.assertEqual(actual, expected)
+
+    def test_selfhost_pipeline_via_kir_matches_interpreter(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        expected = run_subset_program(frontend, entry="pipeline", args=[source])
+        actual = run_subset_program_via_kir(frontend, entry="pipeline", args=[source])
+
+        self.assertEqual(json.loads(actual), json.loads(expected))
 
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """
@@ -972,27 +994,17 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(inspect_kir_artifact(compiled.lower.kir)["instructions"][0]["op"], "call")
         self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
 
-    def test_compile_source_v1_uses_pipeline_entry_only(self):
-        calls: list[str] = []
+    def test_compile_source_v1_does_not_depend_on_subset_eval(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
-        def fake_run_subset_program(source: str, *, entry: str, args: list[object]) -> object:
-            del source, args
-            calls.append(entry)
-            if entry == "pipeline":
-                return (
-                    '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":['
-                    '{"kind":"print","expr":{"kind":"string","value":"hello"}}]},'
-                    '"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},'
-                    '"compile":{"kind":"print_many","texts":["hello"]}}'
-                )
-            raise AssertionError(f"unexpected selfhost entry: {entry}")
+        with patch("kagi.subset_eval.run_subset_program", side_effect=AssertionError("subset_eval should not be used")):
+            compiled = compile_source_v1(frontend, source)
 
-        with patch("kagi.compile_result.run_subset_program", side_effect=fake_run_subset_program):
-            compiled = compile_source_v1("frontend source", "program source")
-
-        self.assertEqual(calls, ["pipeline"])
-        self.assertEqual(compiled.stdout, "hello")
-        self.assertEqual(compiled.lower.artifact.texts, ["hello"])
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
+        self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
 
     def test_parse_selfhost_pipeline_bundle_v1_returns_typed_bundle(self):
         bundle = parse_selfhost_pipeline_bundle_v1(

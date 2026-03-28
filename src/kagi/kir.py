@@ -17,6 +17,11 @@ class KIRBoolV0:
 
 
 @dataclass(frozen=True)
+class KIRIntV0:
+    value: int
+
+
+@dataclass(frozen=True)
 class KIRVarV0:
     name: str
 
@@ -40,7 +45,13 @@ class KIRIfExprV0:
     else_expr: "KIRExprV0"
 
 
-KIRExprV0 = KIRStringV0 | KIRBoolV0 | KIRVarV0 | KIRConcatV0 | KIREqV0 | KIRIfExprV0
+@dataclass(frozen=True)
+class KIRCallExprV0:
+    callee: str
+    args: list["KIRExprV0"]
+
+
+KIRExprV0 = KIRStringV0 | KIRBoolV0 | KIRIntV0 | KIRVarV0 | KIRConcatV0 | KIREqV0 | KIRIfExprV0 | KIRCallExprV0
 
 
 @dataclass(frozen=True)
@@ -78,7 +89,12 @@ class KIRReturnV0:
     expr: KIRExprV0
 
 
-KIRStmtV0 = KIRPrintV0 | KIRLetV0 | KIRIfStmtV0 | KIRCallV0 | KIRReturnV0
+@dataclass(frozen=True)
+class KIRExprStmtV0:
+    expr: KIRExprV0
+
+
+KIRStmtV0 = KIRPrintV0 | KIRLetV0 | KIRIfStmtV0 | KIRCallV0 | KIRReturnV0 | KIRExprStmtV0
 
 
 @dataclass(frozen=True)
@@ -122,6 +138,8 @@ def _inspect_expr(expr: KIRExprV0) -> dict[str, object]:
         return {"kind": "string", "value": expr.value}
     if isinstance(expr, KIRBoolV0):
         return {"kind": "bool", "value": expr.value}
+    if isinstance(expr, KIRIntV0):
+        return {"kind": "int", "value": expr.value}
     if isinstance(expr, KIRVarV0):
         return {"kind": "var", "name": expr.name}
     if isinstance(expr, KIRConcatV0):
@@ -135,6 +153,8 @@ def _inspect_expr(expr: KIRExprV0) -> dict[str, object]:
             "then": _inspect_expr(expr.then_expr),
             "else": _inspect_expr(expr.else_expr),
         }
+    if isinstance(expr, KIRCallExprV0):
+        return {"kind": "call_expr", "callee": expr.callee, "args": [_inspect_expr(arg) for arg in expr.args]}
     raise TypeError(f"unsupported kir expr: {expr!r}")
 
 
@@ -154,6 +174,8 @@ def _inspect_stmt(stmt: KIRStmtV0) -> dict[str, object]:
         return {"op": "call", "name": stmt.name, "args": [_inspect_expr(arg) for arg in stmt.args]}
     if isinstance(stmt, KIRReturnV0):
         return {"op": "return", "expr": _inspect_expr(stmt.expr)}
+    if isinstance(stmt, KIRExprStmtV0):
+        return {"op": "expr", "expr": _inspect_expr(stmt.expr)}
     raise TypeError(f"unsupported kir stmt: {stmt!r}")
 
 
