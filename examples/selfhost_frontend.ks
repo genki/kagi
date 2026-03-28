@@ -1,37 +1,18 @@
-fn extract_text(source) {
-  let text = extract_quoted(trim(source));
-  if eq(text, "") {
-    return "";
-  } else {
-    return text;
-  }
-}
-
 fn parse(source) {
-  let text = extract_text(source);
-  if eq(text, "") {
+  let ast = parse_print_program(source);
+  if eq(ast, "") {
     return "error: expected quoted string";
   } else {
-    return program_ast(text);
+    return ast;
   }
 }
 
 fn check_ast(ast) {
-  let text = program_text(ast);
-  if eq(text, "") {
-    return "error: invalid program ast";
-  } else {
-    return "ok";
-  }
+  return validate_program_ast(ast);
 }
 
 fn lower_ast(ast) {
-  let text = program_text(ast);
-  if eq(text, "") {
-    return "error: invalid program ast";
-  } else {
-    return print_ast(text);
-  }
+  return lower_program_artifact(ast);
 }
 
 fn check(source) {

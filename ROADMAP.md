@@ -94,6 +94,7 @@
 - Python 側の bridge が AST JSON を typed object として受けられる
 - bridge が typed object を tiny CapIR fragment へ lower できる
 - tiny CapIR fragment を実行する専用 runtime path がある
+- tiny source は複数 `print` 文を扱える
 
 ## 非目標
 

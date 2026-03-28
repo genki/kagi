@@ -213,8 +213,8 @@ class RuntimeTest(unittest.TestCase):
             {"kind": "program", "statements": [{"kind": "print", "text": "hello, world!"}]},
         )
         self.assertEqual(checked, "ok")
-        self.assertEqual(json.loads(lowered), {"kind": "print", "text": "hello, world!"})
-        self.assertEqual(json.loads(compiled), {"kind": "print", "text": "hello, world!"})
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+        self.assertEqual(json.loads(compiled), {"kind": "print_many", "texts": ["hello, world!"]})
 
         tiny_program = parse_tiny_program_ast_json(ast)
         self.assertEqual(lower_tiny_program(tiny_program), lowered)
@@ -223,6 +223,32 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(capir.effect, "print")
         self.assertEqual(serialize_capir_fragment(capir), 'print "hello, world!"\n')
         self.assertEqual(execute_capir_fragment(capir).output, "hello, world!")
+
+    def test_selfhost_frontend_supports_multiple_print_statements(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_twice.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        checked = run_subset_program(frontend, entry="check", args=[source])
+        lowered = run_subset_program(frontend, entry="lower", args=[source])
+
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "statements": [
+                    {"kind": "print", "text": "hello"},
+                    {"kind": "print", "text": "world"},
+                ],
+            },
+        )
+        self.assertEqual(checked, "ok")
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello", "world"]})
+
+        tiny_program = parse_tiny_program_ast_json(ast)
+        capir = lower_tiny_program_to_capir(tiny_program)
+        self.assertEqual(serialize_capir_fragment(capir), 'print "hello"\nprint "world"\n')
+        self.assertEqual(execute_capir_fragment(capir).output, "hello\nworld")
 
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
@@ -257,8 +283,33 @@ class RuntimeTest(unittest.TestCase):
         payload = __import__("json").loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "hello, world!")
-        self.assertEqual(payload["artifact"], '{"kind":"print","text":"hello, world!"}')
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
         self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
+
+    def test_cli_selfhost_run_outputs_multiple_lines(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_twice.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello\nworld")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello","world"]}')
+        self.assertEqual(payload["capir"]["serialized"], 'print "hello"\nprint "world"\n')
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]
@@ -359,7 +410,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(check_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
         self.assertEqual(emit_payload["ast"], '{"kind":"program","statements":[{"kind":"print","text":"hello, world!"}]}')
         self.assertEqual(check_payload["value"], "ok")
-        self.assertEqual(emit_payload["artifact"], '{"kind":"print","text":"hello, world!"}')
+        self.assertEqual(emit_payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
         self.assertEqual(capir_payload["capir"]["serialized"], 'print "hello, world!"\n')
         self.assertFalse(invalid_payload["ok"])
         self.assertEqual(invalid_payload["value"], "error: expected quoted string")

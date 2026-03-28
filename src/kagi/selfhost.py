@@ -54,29 +54,24 @@ def parse_tiny_program_ast_json(raw: object) -> TinyProgram:
 
 def lower_tiny_program(program: TinyProgram) -> str:
     fragment = lower_tiny_program_to_capir(program)
-    if len(fragment.ops) != 1:
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-bridge", "only single-op tiny capir fragments are supported")
-        )
-    stmt = fragment.ops[0]
-    return json.dumps({"kind": "print", "text": stmt.text}, ensure_ascii=False, separators=(",", ":"))
+    texts = [stmt.text for stmt in fragment.ops]
+    return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
 
 
 def lower_tiny_program_to_capir(program: TinyProgram) -> CapIRFragment:
-    if len(program.statements) != 1:
+    if len(program.statements) == 0:
         raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-bridge", "only single-statement tiny programs are supported")
+            diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one statement")
         )
-    stmt = program.statements[0]
-    return CapIRFragment(effect="print", ops=[CapIRPrint(text=stmt.text)])
+    return CapIRFragment(effect="print", ops=[CapIRPrint(text=stmt.text) for stmt in program.statements])
 
 
 def render_tiny_program(program: TinyProgram) -> str:
-    if len(program.statements) != 1:
+    if len(program.statements) == 0:
         raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-bridge", "only single-statement tiny programs are supported")
+            diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one statement")
         )
-    return program.statements[0].text
+    return "\n".join(stmt.text for stmt in program.statements)
 
 
 def render_print_artifact(artifact: object) -> str:
@@ -94,13 +89,20 @@ def render_print_artifact(artifact: object) -> str:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", f"invalid selfhost artifact json: {exc.msg}")
         ) from exc
-    if not isinstance(payload, dict) or payload.get("kind") != "print":
+    if not isinstance(payload, dict) or payload.get("kind") not in {"print", "print_many"}:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "unsupported selfhost artifact")
         )
-    text = payload.get("text")
-    if not isinstance(text, str):
+    if payload.get("kind") == "print":
+        text = payload.get("text")
+        if not isinstance(text, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "print artifact requires string text")
+            )
+        return text
+    texts = payload.get("texts")
+    if not isinstance(texts, list) or not all(isinstance(text, str) for text in texts):
         raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-bridge", "print artifact requires string text")
+            diagnostic_from_runtime_error("selfhost-bridge", "print_many artifact requires string texts")
         )
-    return text
+    return "\n".join(texts)

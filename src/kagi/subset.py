@@ -265,13 +265,83 @@ def builtin_program_text(ast: object) -> str:
     return text if isinstance(text, str) else ""
 
 
+def parse_print_program_source(text: str) -> dict | None:
+    statements: list[dict[str, str]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if not line.startswith("print "):
+            return None
+        start = line.find('"')
+        if start == -1:
+            return None
+        end = line.rfind('"')
+        if end <= start:
+            return None
+        statements.append({"kind": "print", "text": line[start + 1:end]})
+    if not statements:
+        return None
+    return {"kind": "program", "statements": statements}
+
+
+def builtin_parse_print_program(source: object) -> str:
+    if not isinstance(source, str):
+        return ""
+    payload = parse_print_program_source(source)
+    if payload is None:
+        return ""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def builtin_validate_program_ast(ast: object) -> str:
+    if not isinstance(ast, str):
+        return "error: invalid program ast"
+    try:
+        payload = json.loads(ast)
+    except json.JSONDecodeError:
+        return "error: invalid program ast"
+    if not isinstance(payload, dict) or payload.get("kind") != "program":
+        return "error: invalid program ast"
+    statements = payload.get("statements")
+    if not isinstance(statements, list) or len(statements) == 0:
+        return "error: invalid program ast"
+    for stmt in statements:
+        if not isinstance(stmt, dict) or stmt.get("kind") != "print" or not isinstance(stmt.get("text"), str):
+            return "error: invalid program ast"
+    return "ok"
+
+
+def builtin_lower_program_artifact(ast: object) -> str:
+    if not isinstance(ast, str):
+        return "error: invalid program ast"
+    try:
+        payload = json.loads(ast)
+    except json.JSONDecodeError:
+        return "error: invalid program ast"
+    if not isinstance(payload, dict) or payload.get("kind") != "program":
+        return "error: invalid program ast"
+    statements = payload.get("statements")
+    if not isinstance(statements, list) or len(statements) == 0:
+        return "error: invalid program ast"
+    texts: list[str] = []
+    for stmt in statements:
+        if not isinstance(stmt, dict) or stmt.get("kind") != "print" or not isinstance(stmt.get("text"), str):
+            return "error: invalid program ast"
+        texts.append(stmt["text"])
+    return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
+
+
 BUILTINS = {
     "eq": builtin_eq,
     "concat": builtin_concat,
     "extract_quoted": builtin_extract_quoted,
+    "lower_program_artifact": builtin_lower_program_artifact,
+    "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
     "program_ast": builtin_program_ast,
     "program_text": builtin_program_text,
+    "validate_program_ast": builtin_validate_program_ast,
     "trim": builtin_trim,
 }
 

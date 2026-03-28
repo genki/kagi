@@ -17,6 +17,8 @@ def execute_capir_fragment(fragment: CapIRFragment) -> CapIRExecutionResult:
             diagnostic_from_runtime_error("capir-runtime", f"unsupported effect: {fragment.effect}")
         )
     parts: list[str] = []
-    for op in fragment.ops:
+    for index, op in enumerate(fragment.ops):
+        if index > 0:
+            parts.append("\n")
         parts.append(op.text)
     return CapIRExecutionResult(output="".join(parts))
