@@ -33,10 +33,6 @@ def builtin_ends_with(text: object, suffix: object) -> bool:
     return isinstance(text, str) and isinstance(suffix, str) and text.endswith(suffix)
 
 
-def builtin_quote() -> str:
-    return '"'
-
-
 def builtin_line_count(text: object) -> int:
     if not isinstance(text, str):
         return 0
@@ -84,7 +80,6 @@ CORE_BUILTINS = {
     "is_identifier": builtin_is_identifier,
     "line_at": builtin_line_at,
     "line_count": builtin_line_count,
-    "quote": builtin_quote,
     "starts_with": builtin_starts_with,
     "trim": builtin_trim,
 }

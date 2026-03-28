@@ -26,7 +26,6 @@ from .subset_builtins import (
     builtin_is_identifier,
     builtin_line_at,
     builtin_line_count,
-    builtin_quote,
     builtin_starts_with,
     builtin_trim,
 )

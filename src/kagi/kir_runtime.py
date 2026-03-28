@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .artifact import artifact_v1_stdout
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .kir import (
     KIRBoolV0,
@@ -22,6 +23,7 @@ from .kir import (
     KIRReturnV0,
     KIRStringV0,
     KIRVarV0,
+    kir_program_to_print_artifact,
 )
 
 
@@ -40,6 +42,25 @@ class _ReturnSignal(Exception):
 
 
 def execute_kir_program_v0(
+    program: KIRProgramV0,
+    *,
+    builtins: dict[str, BuiltinFuncV0] | None = None,
+) -> KIRExecutionResultV0:
+    fast_path = _try_execute_print_only_program_v0(program)
+    if fast_path is not None:
+        return fast_path
+    return _execute_generic_kir_program_v0(program, builtins=builtins)
+
+
+def _try_execute_print_only_program_v0(program: KIRProgramV0) -> KIRExecutionResultV0 | None:
+    try:
+        artifact = kir_program_to_print_artifact(program)
+    except DiagnosticError:
+        return None
+    return KIRExecutionResultV0(output=artifact_v1_stdout(artifact))
+
+
+def _execute_generic_kir_program_v0(
     program: KIRProgramV0,
     *,
     builtins: dict[str, BuiltinFuncV0] | None = None,

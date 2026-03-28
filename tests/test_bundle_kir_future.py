@@ -16,6 +16,7 @@ import kagi.lower_subset_to_kir as lower_subset_to_kir
 import kagi.subset as subset_module
 import kagi.selfhost_runtime as selfhost_runtime
 import kagi.subset_builtins as subset_builtins
+import kagi.subset_typecheck as subset_typecheck
 from kagi.surface_ast import parse_surface_program_v1
 
 
@@ -24,6 +25,7 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertNotIn("quote", subset_builtins.CORE_BUILTINS)
         self.assertNotIn("quote", subset_module.BUILTINS)
         self.assertNotIn("quote", lower_subset_to_kir.SUBSET_KIR_BUILTINS)
+        self.assertNotIn("quote", subset_typecheck.BUILTIN_SIGNATURES)
 
     def test_selfhost_frontend_fallback_pipeline_still_runs_without_quote_builtin(self):
         root = Path(__file__).resolve().parents[1]

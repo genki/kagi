@@ -46,7 +46,6 @@ BUILTIN_SIGNATURES: dict[str, BuiltinSignatureV0] = {
     "program_text": BuiltinSignatureV0(("string",), "string"),
     "program_two_prints_ast": BuiltinSignatureV0(("string", "string"), "string"),
     "program_zero_arg_fn_call_ast": BuiltinSignatureV0(("string", "string", "string", "string"), "string"),
-    "quote": BuiltinSignatureV0((), "string"),
     "starts_with": BuiltinSignatureV0(("string", "string"), "bool"),
     "trim": BuiltinSignatureV0(("string",), "string"),
 }
