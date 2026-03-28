@@ -267,25 +267,13 @@ def main() -> None:
     if args.command == "selfhost-check":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            parsed = parse_selfhost_ast(frontend_source, program_source)
-            if isinstance(parsed, str) and parsed.startswith("error:"):
-                emit_payload(
-                    {
-                        "ok": False,
-                        "entry": args.entry,
-                        "source": str(args.source),
-                        "ast": None,
-                        "value": parsed,
-                    }
-                )
-                raise SystemExit(1)
             compiled = compile_source_v1(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": parsed if args.json else None,
+                    "ast": compiled.parse.raw_ast if args.json else None,
                     "value": "ok",
                     "effects": {
                         "program": compiled.check.effects.program_effects,
@@ -293,8 +281,19 @@ def main() -> None:
                     },
                 }
             )
-        except SystemExit:
-            raise
+        except DiagnosticError as exc:
+            if exc.diagnostic.message == "error: unsupported source":
+                emit_payload(
+                    {
+                        "ok": False,
+                        "entry": args.entry,
+                        "source": str(args.source),
+                        "ast": None,
+                        "value": exc.diagnostic.message,
+                    }
+                )
+                raise SystemExit(1)
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return

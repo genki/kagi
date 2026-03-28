@@ -1049,6 +1049,19 @@ fn build_print_many_json_2(text1, text2) {
   );
 }
 
+fn build_pipeline_bundle_json(ast_json, artifact_json) {
+  return concat(
+    "{\"kind\":\"pipeline_bundle\",\"ast\":",
+    concat(
+      ast_json,
+      concat(
+        ",\"check\":\"ok\",\"artifact\":",
+        concat(artifact_json, concat(",\"compile\":", concat(artifact_json, "}")))
+      )
+    )
+  );
+}
+
 fn parse_simple_line_expr_json(text) {
   let line = trim(text);
   let q = quote();
@@ -2138,4 +2151,18 @@ fn lower(source) {
 
 fn compile(source) {
   return lower(source);
+}
+
+fn pipeline(source) {
+  let ast = parse(source);
+  if starts_with(ast, "error:") {
+    return ast;
+  } else {
+    let artifact = lower(source);
+    if starts_with(artifact, "error:") {
+      return artifact;
+    } else {
+      return build_pipeline_bundle_json(ast, artifact);
+    }
+  }
 }

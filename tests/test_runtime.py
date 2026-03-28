@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import json
+from unittest.mock import patch
 
 import kagi
 from kagi.compile_result import compile_source_v1
@@ -349,10 +350,22 @@ class RuntimeTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
+        bundle = run_subset_program(frontend, entry="pipeline", args=[source])
         ast = run_subset_program(frontend, entry="parse", args=[source])
         checked = run_subset_program(frontend, entry="check", args=[source])
         lowered = run_subset_program(frontend, entry="lower", args=[source])
         compiled = run_subset_program(frontend, entry="compile", args=[source])
+        bundle_json = json.loads(bundle)
+        self.assertEqual(
+            bundle_json,
+            {
+                "kind": "pipeline_bundle",
+                "ast": json.loads(ast),
+                "check": "ok",
+                "artifact": json.loads(lowered),
+                "compile": json.loads(compiled),
+            },
+        )
         self.assertEqual(
             json.loads(ast),
             {
@@ -947,6 +960,28 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(compiled.compile_artifact.texts, ["hello, world!"])
         self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
         self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
+
+    def test_compile_source_v1_uses_pipeline_entry_only(self):
+        calls: list[str] = []
+
+        def fake_run_subset_program(source: str, *, entry: str, args: list[object]) -> object:
+            del source, args
+            calls.append(entry)
+            if entry == "pipeline":
+                return (
+                    '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":['
+                    '{"kind":"print","expr":{"kind":"string","value":"hello"}}]},'
+                    '"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},'
+                    '"compile":{"kind":"print_many","texts":["hello"]}}'
+                )
+            raise AssertionError(f"unexpected selfhost entry: {entry}")
+
+        with patch("kagi.compile_result.run_subset_program", side_effect=fake_run_subset_program):
+            compiled = compile_source_v1("frontend source", "program source")
+
+        self.assertEqual(calls, ["pipeline"])
+        self.assertEqual(compiled.stdout, "hello")
+        self.assertEqual(compiled.lower.artifact.texts, ["hello"])
 
     def test_package_exports_artifact_abi_helpers(self):
         self.assertTrue(hasattr(kagi, "execute_capir_artifact"))

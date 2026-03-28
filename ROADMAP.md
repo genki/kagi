@@ -114,6 +114,12 @@
   - `typecheck.py`
   - `effects.py`
   - `compile_source_v1(...)` が静的パスを通る
+- `compile-once-selfhost` を追加
+  - `compile_source_v1(...)` は selfhost frontend の `parse` と `compile` だけを主経路で呼ぶ
+  - `check/lower` は typed contract 側から導出する
+- `front-half compile-once` を追加
+  - `selfhost_frontend.ks` の `pipeline(source)` が parse/lower を 1 回で束ねる
+  - `compile_source_v1(...)` は pipeline bundle を 1 回読む
 
 ## 非目標
 
