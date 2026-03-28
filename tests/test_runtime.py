@@ -9,6 +9,7 @@ from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
 from kagi.selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json, render_tiny_program
+import kagi.subset as subset_module
 from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
     Cell,
@@ -561,6 +562,147 @@ class RuntimeTest(unittest.TestCase):
         )
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
 
+    def test_selfhost_frontend_covered_current_shapes_do_not_depend_on_legacy_subset_builtins(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        saved_builtins = subset_module.BUILTINS.copy()
+        for builtin_name in ("parse_print_program", "validate_program_ast", "lower_program_artifact"):
+            subset_module.BUILTINS.pop(builtin_name, None)
+        try:
+            cases = [
+                (
+                    "hello_twice.ksrc",
+                    {
+                        "kind": "program",
+                        "functions": [],
+                        "statements": [
+                            {"kind": "print", "expr": {"kind": "string", "value": "hello"}},
+                            {"kind": "print", "expr": {"kind": "string", "value": "world"}},
+                        ],
+                    },
+                    {"kind": "print_many", "texts": ["hello", "world"]},
+                    "hello\nworld",
+                ),
+                (
+                    "hello_fn.ksrc",
+                    {
+                        "kind": "program",
+                        "functions": [
+                            {
+                                "kind": "fn",
+                                "name": "emit_greeting",
+                                "params": [],
+                                "body": [
+                                    {
+                                        "kind": "let",
+                                        "name": "greeting",
+                                        "expr": {
+                                            "kind": "concat",
+                                            "left": {"kind": "string", "value": "hello, "},
+                                            "right": {"kind": "string", "value": "world!"},
+                                        },
+                                    },
+                                    {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                                ],
+                            }
+                        ],
+                        "statements": [{"kind": "call", "name": "emit_greeting", "args": []}],
+                    },
+                    {"kind": "print_many", "texts": ["hello, world!"]},
+                    "hello, world!",
+                ),
+                (
+                    "hello_if.ksrc",
+                    {
+                        "kind": "program",
+                        "functions": [],
+                        "statements": [
+                            {
+                                "kind": "let",
+                                "name": "greeting",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "string", "value": "hello, "},
+                                    "right": {"kind": "string", "value": "world!"},
+                                },
+                            },
+                            {
+                                "kind": "let",
+                                "name": "enabled",
+                                "expr": {
+                                    "kind": "eq",
+                                    "left": {"kind": "var", "name": "greeting"},
+                                    "right": {"kind": "string", "value": "hello, world!"},
+                                },
+                            },
+                            {
+                                "kind": "print",
+                                "expr": {
+                                    "kind": "if",
+                                    "condition": {"kind": "var", "name": "enabled"},
+                                    "then": {"kind": "var", "name": "greeting"},
+                                    "else": {"kind": "string", "value": "disabled"},
+                                },
+                            },
+                        ],
+                    },
+                    {"kind": "print_many", "texts": ["hello, world!"]},
+                    "hello, world!",
+                ),
+                (
+                    "hello_if_stmt.ksrc",
+                    {
+                        "kind": "program",
+                        "functions": [],
+                        "statements": [
+                            {
+                                "kind": "let",
+                                "name": "greeting",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "string", "value": "hello, "},
+                                    "right": {"kind": "string", "value": "world!"},
+                                },
+                            },
+                            {
+                                "kind": "let",
+                                "name": "enabled",
+                                "expr": {
+                                    "kind": "eq",
+                                    "left": {"kind": "var", "name": "greeting"},
+                                    "right": {"kind": "string", "value": "hello, world!"},
+                                },
+                            },
+                            {
+                                "kind": "if_stmt",
+                                "condition": {"kind": "var", "name": "enabled"},
+                                "then_body": [{"kind": "print", "expr": {"kind": "var", "name": "greeting"}}],
+                                "else_body": [{"kind": "print", "expr": {"kind": "string", "value": "disabled"}}],
+                            },
+                        ],
+                    },
+                    {"kind": "print_many", "texts": ["hello, world!"]},
+                    "hello, world!",
+                ),
+            ]
+
+            for filename, expected_ast, expected_artifact, expected_output in cases:
+                with self.subTest(filename=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    ast = run_subset_program(frontend, entry="parse", args=[source])
+                    checked = run_subset_program(frontend, entry="check", args=[source])
+                    lowered = run_subset_program(frontend, entry="lower", args=[source])
+                    compiled = run_subset_program(frontend, entry="compile", args=[source])
+                    self.assertEqual(json.loads(ast), expected_ast)
+                    self.assertEqual(checked, "ok")
+                    self.assertEqual(json.loads(lowered), expected_artifact)
+                    self.assertEqual(json.loads(compiled), expected_artifact)
+                    fragment = capir_fragment_from_artifact(compiled)
+                    self.assertEqual(execute_capir_fragment(fragment).output, expected_output)
+        finally:
+            subset_module.BUILTINS.clear()
+            subset_module.BUILTINS.update(saved_builtins)
+
     def test_selfhost_frontend_supports_if_statement_blocks(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -723,9 +865,44 @@ class RuntimeTest(unittest.TestCase):
         parsed = run_subset_program(frontend, entry="parse", args=[invalid])
         checked = run_subset_program(frontend, entry="check", args=[invalid])
         lowered = run_subset_program(frontend, entry="lower", args=[invalid])
-        self.assertEqual(parsed, "error: expected quoted string")
-        self.assertEqual(checked, "error: expected quoted string")
-        self.assertEqual(lowered, "error: expected quoted string")
+        self.assertEqual(parsed, "error: unsupported source")
+        self.assertEqual(checked, "error: unsupported source")
+        self.assertEqual(lowered, "error: unsupported source")
+
+    def test_selfhost_frontend_no_longer_uses_python_parse_check_lower_builtins_for_current_examples(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        example_names = [
+            "hello.ksrc",
+            "hello_concat.ksrc",
+            "hello_let.ksrc",
+            "hello_let_string.ksrc",
+            "hello_let_concat.ksrc",
+            "hello_twice.ksrc",
+            "hello_fn.ksrc",
+            "hello_arg_fn.ksrc",
+            "hello_if.ksrc",
+            "hello_if_stmt.ksrc",
+            "hello_print_concat.ksrc",
+        ]
+        saved_builtins = dict(subset_module.BUILTINS)
+        try:
+            subset_module.BUILTINS.pop("parse_print_program", None)
+            subset_module.BUILTINS.pop("validate_program_ast", None)
+            subset_module.BUILTINS.pop("lower_program_artifact", None)
+            for example_name in example_names:
+                source = (root / "examples" / example_name).read_text(encoding="utf-8")
+                parsed = run_subset_program(frontend, entry="parse", args=[source])
+                checked = run_subset_program(frontend, entry="check", args=[source])
+                lowered = run_subset_program(frontend, entry="lower", args=[source])
+                compiled = run_subset_program(frontend, entry="compile", args=[source])
+                self.assertFalse(parsed.startswith("error:"), example_name)
+                self.assertEqual(checked, "ok", example_name)
+                self.assertFalse(lowered.startswith("error:"), example_name)
+                self.assertEqual(compiled, lowered, example_name)
+        finally:
+            subset_module.BUILTINS.clear()
+            subset_module.BUILTINS.update(saved_builtins)
 
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]
@@ -1316,7 +1493,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(emit_payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
         self.assertEqual(capir_payload["capir"]["serialized"], 'print "hello, world!"\n')
         self.assertFalse(invalid_payload["ok"])
-        self.assertEqual(invalid_payload["value"], "error: expected quoted string")
+        self.assertEqual(invalid_payload["value"], "error: unsupported source")
 
 
 if __name__ == "__main__":
