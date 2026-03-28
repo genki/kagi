@@ -16,6 +16,7 @@ from .capir_runtime import (
 from .compile_result import compile_source_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+from .hir import inspect_hir_program_v1
 from .ir import action_to_string
 from .lower_subset_to_kir import execute_subset_entry_via_kir_v0
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
@@ -257,8 +258,13 @@ def main() -> None:
                     {
                         "ok": True,
                         "entry": args.entry,
+                        "metadata": {
+                            "contract_version": compiled.metadata.contract_version,
+                            "frontend_entry": compiled.metadata.frontend_entry,
+                        },
                         "source": str(args.source),
                         "ast": compiled.parse.raw_ast,
+                        "hir": inspect_hir_program_v1(compiled.lower.hir),
                         "kir": inspect_kir_artifact(compiled.lower.kir),
                         "capir": inspect_capir_artifact(compiled.compile_artifact),
                         "artifact": compiled.raw_compile_artifact,
@@ -279,8 +285,13 @@ def main() -> None:
                 {
                     "ok": True,
                     "entry": args.entry,
+                    "metadata": {
+                        "contract_version": compiled.metadata.contract_version,
+                        "frontend_entry": compiled.metadata.frontend_entry,
+                    },
                     "source": str(args.source),
                     "ast": compiled.parse.raw_ast if args.json else None,
+                    "hir": inspect_hir_program_v1(compiled.lower.hir) if args.json else None,
                     "value": "ok",
                     "effects": {
                         "program": compiled.check.effects.program_effects,
@@ -334,8 +345,13 @@ def main() -> None:
                 {
                     "ok": True,
                     "entry": args.entry,
+                    "metadata": {
+                        "contract_version": compiled.metadata.contract_version,
+                        "frontend_entry": compiled.metadata.frontend_entry,
+                    },
                     "source": str(args.source),
                     "ast": compiled.parse.raw_ast,
+                    "hir": inspect_hir_program_v1(compiled.lower.hir),
                     "artifact": artifact_v1_to_json(compiled.lower.artifact),
                 }
             )
@@ -353,8 +369,13 @@ def main() -> None:
                 {
                     "ok": True,
                     "entry": args.entry,
+                    "metadata": {
+                        "contract_version": compiled.metadata.contract_version,
+                        "frontend_entry": compiled.metadata.frontend_entry,
+                    },
                     "source": str(args.source),
                     "ast": compiled.parse.raw_ast,
+                    "hir": inspect_hir_program_v1(compiled.lower.hir),
                     "artifact": compiled.raw_compile_artifact,
                     "kir": inspect_kir_artifact(compiled.lower.kir),
                     "capir": inspect_capir_artifact(compiled.compile_artifact),

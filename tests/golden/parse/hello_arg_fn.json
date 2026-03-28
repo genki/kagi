@@ -1,0 +1,1 @@
+{"kind":"program","functions":[{"kind":"fn","name":"emit_suffix","params":["name"],"body":[{"kind":"print","expr":{"kind":"concat","left":{"kind":"var","name":"name"},"right":{"kind":"string","value":"!"}}}]}],"statements":[{"kind":"call","name":"emit_suffix","args":[{"kind":"string","value":"hello, world"}]}]}

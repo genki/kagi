@@ -97,6 +97,71 @@ class HIRProgramV1:
     statements: list[HIRStmtV1]
 
 
+def inspect_hir_expr_v1(expr: HIRExprV1) -> dict[str, object]:
+    if isinstance(expr, HIRStringV1):
+        return {"kind": "string", "value": expr.value}
+    if isinstance(expr, HIRBoolV1):
+        return {"kind": "bool", "value": expr.value}
+    if isinstance(expr, HIRVarV1):
+        return {"kind": "var", "name": expr.name}
+    if isinstance(expr, HIRConcatV1):
+        return {
+            "kind": "concat",
+            "left": inspect_hir_expr_v1(expr.left),
+            "right": inspect_hir_expr_v1(expr.right),
+        }
+    if isinstance(expr, HIREqV1):
+        return {
+            "kind": "eq",
+            "left": inspect_hir_expr_v1(expr.left),
+            "right": inspect_hir_expr_v1(expr.right),
+        }
+    if isinstance(expr, HIRIfExprV1):
+        return {
+            "kind": "if",
+            "condition": inspect_hir_expr_v1(expr.condition),
+            "then": inspect_hir_expr_v1(expr.then_expr),
+            "else": inspect_hir_expr_v1(expr.else_expr),
+        }
+    raise TypeError(f"unsupported hir expr: {expr!r}")
+
+
+def inspect_hir_stmt_v1(stmt: HIRStmtV1) -> dict[str, object]:
+    if isinstance(stmt, HIRPrintStmtV1):
+        return {"kind": "print", "expr": inspect_hir_expr_v1(stmt.expr)}
+    if isinstance(stmt, HIRLetStmtV1):
+        return {"kind": "let", "name": stmt.name, "expr": inspect_hir_expr_v1(stmt.expr)}
+    if isinstance(stmt, HIRIfStmtV1):
+        return {
+            "kind": "if_stmt",
+            "condition": inspect_hir_expr_v1(stmt.condition),
+            "then_body": [inspect_hir_stmt_v1(item) for item in stmt.then_body],
+            "else_body": [inspect_hir_stmt_v1(item) for item in stmt.else_body],
+        }
+    if isinstance(stmt, HIRCallStmtV1):
+        return {
+            "kind": "call",
+            "name": stmt.name,
+            "args": [inspect_hir_expr_v1(arg) for arg in stmt.args],
+        }
+    raise TypeError(f"unsupported hir stmt: {stmt!r}")
+
+
+def inspect_hir_program_v1(program: HIRProgramV1) -> dict[str, object]:
+    return {
+        "kind": "hir_program",
+        "functions": [
+            {
+                "name": fn.name,
+                "params": list(fn.params),
+                "body": [inspect_hir_stmt_v1(stmt) for stmt in fn.body],
+            }
+            for fn in program.functions
+        ],
+        "statements": [inspect_hir_stmt_v1(stmt) for stmt in program.statements],
+    }
+
+
 def lower_surface_program_to_hir_v1(program: SurfaceProgramV1) -> HIRProgramV1:
     return HIRProgramV1(
         functions=[lower_surface_function_to_hir_v1(fn) for fn in program.functions],

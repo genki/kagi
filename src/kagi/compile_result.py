@@ -39,7 +39,14 @@ class LowerArtifactV1:
 
 
 @dataclass(frozen=True)
+class CompileMetadataV1:
+    contract_version: str
+    frontend_entry: str
+
+
+@dataclass(frozen=True)
 class CompileResultV1:
+    metadata: CompileMetadataV1
     parse: ParseArtifactV1
     check: CheckArtifactV1
     lower: LowerArtifactV1
@@ -50,7 +57,8 @@ class CompileResultV1:
 
 
 def compile_source_v1(frontend_source: str, program_source: str) -> CompileResultV1:
-    bundle_raw = execute_subset_entry_via_kir_v0(frontend_source, entry="pipeline", args=[program_source])
+    frontend_entry = "pipeline"
+    bundle_raw = execute_subset_entry_via_kir_v0(frontend_source, entry=frontend_entry, args=[program_source])
     if not isinstance(bundle_raw, str) or bundle_raw.startswith("error:"):
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-pipeline", str(bundle_raw))
@@ -69,6 +77,7 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
     compile_kir = lower_hir_program_to_kir_v0(hir)
 
     return CompileResultV1(
+        metadata=CompileMetadataV1(contract_version="front-half-v1", frontend_entry=frontend_entry),
         parse=ParseArtifactV1(raw_ast=bundle.raw_ast, surface_ast=surface_ast),
         check=CheckArtifactV1(raw_result=bundle.raw_check, ok=True, resolved=resolved, typed=typed, effects=effects),
         lower=LowerArtifactV1(raw_artifact=bundle.raw_artifact, hir=hir, artifact=lower_artifact, kir=lower_kir),
