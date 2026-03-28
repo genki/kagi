@@ -171,6 +171,58 @@ class BundleKirFutureTest(unittest.TestCase):
                     self.assertEqual(kir_spy.call_count, 0)
                     self.assertEqual(analysis_spy.call_count, 0)
 
+    def test_canonical_frontend_parse_does_not_call_python_bootstrap_builders(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        cases = (
+            "hello.ksrc",
+            "hello_print_concat.ksrc",
+            "hello_let_string.ksrc",
+            "hello_let_concat.ksrc",
+            "hello_twice.ksrc",
+            "hello_fn.ksrc",
+            "hello_arg_fn.ksrc",
+            "hello_if.ksrc",
+            "hello_if_stmt.ksrc",
+        )
+        forbidden_builder_names = (
+            "program_ast",
+            "program_if_expr_print_ast",
+            "program_if_stmt_ast",
+            "program_print_concat_ast",
+            "program_let_concat_print_ast",
+            "program_single_arg_fn_call_ast",
+            "program_let_print_ast",
+            "program_two_prints_ast",
+            "program_zero_arg_fn_call_ast",
+        )
+
+        for filename in cases:
+            with self.subTest(case=filename):
+                source = (root / "examples" / filename).read_text(encoding="utf-8")
+                forbidden_builtins = {
+                    name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical parse path"))
+                    for name in forbidden_builder_names
+                }
+                with patch.object(
+                    selfhost_runtime,
+                    "SUBSET_KIR_BUILTINS",
+                    {
+                        **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                        **forbidden_builtins,
+                    },
+                ):
+                    value = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                        frontend_source,
+                        entry="parse",
+                        args=[source],
+                    )
+
+                self.assertIsInstance(value, str)
+                self.assertFalse(value.startswith("error:"))
+                for name, spy in forbidden_builtins.items():
+                    self.assertEqual(spy.call_count, 0, f"{filename}:{name}")
+
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
         raw = json.dumps(

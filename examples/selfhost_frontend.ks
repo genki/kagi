@@ -179,14 +179,20 @@ fn try_parse_simple_single_arg_fn_call(source) {
                     if eq(rebuilt1, line1) {
                       if eq(rebuilt2, line2) {
                         if eq(rebuilt4, line4) {
-                          return program_single_arg_fn_call_ast(fn_name, param_name, arg_text, suffix);
+                          let print_ast = build_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                          let fn_ast = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[\"", concat(param_name, concat("\"],\"body\":[", concat(print_ast, "]}"))))));
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                          return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_ast, concat("],\"statements\":[", concat(call_ast, "]}"))));
                         } else {
                           return "";
                         }
                       } else {
                         if eq(rebuilt2_no_space, line2) {
                           if eq(rebuilt4, line4) {
-                            return program_single_arg_fn_call_ast(fn_name, param_name, arg_text, suffix);
+                            let print_ast = build_print_stmt_json(build_concat_expr_json(build_var_expr_json(param_name), build_string_expr_json(suffix)));
+                            let fn_ast = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[\"", concat(param_name, concat("\"],\"body\":[", concat(print_ast, "]}"))))));
+                            let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_1(build_string_expr_json(arg_text)));
+                            return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_ast, concat("],\"statements\":[", concat(call_ast, "]}"))));
                           } else {
                             return "";
                           }
@@ -568,14 +574,10 @@ fn try_parse_if_expr_print(source) {
                     if eq(rebuilt1, line1) {
                       if eq(rebuilt2, line2) {
                         if eq(rebuilt3, line3) {
-                          return program_if_expr_print_ast(
-                            greeting_name,
-                            left_text,
-                            right_text,
-                            enabled_name,
-                            expected_text,
-                            disabled_text
-                          );
+                          let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                          let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                          let print_ast = build_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+                          return build_program_json(join_statements_3(greeting_ast, enabled_ast, print_ast));
                         } else {
                           return "";
                         }
@@ -2852,7 +2854,9 @@ fn try_parse_two_prints(source) {
         let rebuilt2 = concat("print ", concat(q, concat(text2, q)));
         if eq(rebuilt1, line1) {
           if eq(rebuilt2, line2) {
-            return program_two_prints_ast(text1, text2);
+            let stmt1 = build_print_stmt_json(build_string_expr_json(text1));
+            let stmt2 = build_print_stmt_json(build_string_expr_json(text2));
+            return build_program_json(join_statements_2(stmt1, stmt2));
           } else {
             return "";
           }
@@ -2908,7 +2912,12 @@ fn try_parse_zero_arg_fn_call(source) {
                     if eq(rebuilt2, line2) {
                       if eq(rebuilt3, line3) {
                         if eq(after_substring(line5, "call "), rebuilt5) {
-                          return program_zero_arg_fn_call_ast(fn_name, name, quoted1, quoted2);
+                          let let_ast = build_let_stmt_json(name, build_concat_expr_json(build_string_expr_json(quoted1), build_string_expr_json(quoted2)));
+                          let print_ast = build_print_stmt_json(build_var_expr_json(name));
+                          let body_json = join_statements_2(let_ast, print_ast);
+                          let fn_json = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[],\"body\":[", concat(body_json, "]}"))));
+                          let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_0());
+                          return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_json, concat("],\"statements\":[", concat(call_ast, "]}"))));
                         } else {
                           return "";
                         }
@@ -2993,7 +3002,10 @@ fn try_parse_if_expr(source) {
         if eq(rebuilt1, line1) {
           if eq(rebuilt2, line2) {
             if eq(rebuilt3, line3) {
-              return program_if_expr_print_ast(greeting_name, left_text, right_text, enabled_name, expected_text, disabled_text);
+              let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+              let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+              let print_ast = build_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+              return build_program_json(join_statements_3(greeting_ast, enabled_ast, print_ast));
             } else {
               return "";
             }
@@ -3065,7 +3077,14 @@ fn try_parse_if_stmt(source) {
                 if eq(line5, rebuilt4) {
                   if eq(line6, rebuilt5) {
                     if eq(line7, "}") {
-                      return program_if_stmt_ast(greeting_name, left_text, right_text, enabled_name, expected_text, disabled_text);
+                      let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                      let if_ast = build_if_stmt_json(
+                        build_var_expr_json(enabled_name),
+                        build_print_stmt_json(build_var_expr_json(greeting_name)),
+                        build_print_stmt_json(build_string_expr_json(disabled_text))
+                      );
+                      return build_program_json(join_statements_3(greeting_ast, enabled_ast, if_ast));
                     } else {
                       return "";
                     }
@@ -3180,7 +3199,12 @@ fn try_parse_zero_arg_fn_call_simple(source) {
                 if is_identifier(var_name) {
                   if eq(print_name, var_name) {
                     if eq(call_name, fn_name) {
-                      return program_zero_arg_fn_call_ast(fn_name, var_name, left_text, right_text);
+                      let let_ast = build_let_stmt_json(var_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let print_ast = build_print_stmt_json(build_var_expr_json(var_name));
+                      let body_json = join_statements_2(let_ast, print_ast);
+                      let fn_json = concat("{\"kind\":\"fn\",\"name\":\"", concat(fn_name, concat("\",\"params\":[],\"body\":[", concat(body_json, "]}"))));
+                      let call_ast = build_call_stmt_json(fn_name, build_expr_list_json_0());
+                      return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_json, concat("],\"statements\":[", concat(call_ast, "]}"))));
                     } else {
                       return "";
                     }
@@ -3307,14 +3331,14 @@ fn try_parse_if_stmt_simple(source) {
                       if eq(greeting_ref, greeting_name) {
                         if eq(enabled_name, condition_name) {
                           if eq(print_then, greeting_name) {
-                            return program_if_stmt_ast(
-                              greeting_name,
-                              left_text,
-                              right_text,
-                              enabled_name,
-                              expected_text,
-                              disabled_text
+                            let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                            let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                            let if_ast = build_if_stmt_json(
+                              build_var_expr_json(enabled_name),
+                              build_print_stmt_json(build_var_expr_json(greeting_name)),
+                              build_print_stmt_json(build_string_expr_json(disabled_text))
                             );
+                            return build_program_json(join_statements_3(greeting_ast, enabled_ast, if_ast));
                           } else {
                             return "";
                           }
