@@ -9,6 +9,7 @@ from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
+from .subset import run_subset_program
 
 
 def heap_to_json(result: ExecutionResult) -> dict:
@@ -103,6 +104,18 @@ def main() -> None:
     bootstrap_trace_parser.add_argument("file")
     add_json_flag(bootstrap_trace_parser)
 
+    subset_run_parser = subparsers.add_parser("subset-run")
+    subset_run_parser.add_argument("file")
+    subset_run_parser.add_argument("--entry", default="main")
+    subset_run_parser.add_argument("--arg", action="append", default=[])
+    add_json_flag(subset_run_parser)
+
+    selfhost_run_parser = subparsers.add_parser("selfhost-run")
+    selfhost_run_parser.add_argument("frontend")
+    selfhost_run_parser.add_argument("source")
+    selfhost_run_parser.add_argument("--entry", default="compile")
+    add_json_flag(selfhost_run_parser)
+
     args = parser.parse_args()
     if args.command == "run":
         try:
@@ -175,6 +188,32 @@ def main() -> None:
             emit_payload(trace_to_json(result))
         except Exception as exc:
             emit_diagnostic(exc, phase="runtime", use_json=args.json)
+        return
+
+    if args.command == "subset-run":
+        try:
+            source = Path(args.file).read_text(encoding="utf-8")
+            value = run_subset_program(source, entry=args.entry, args=list(args.arg))
+            emit_payload({"ok": True, "entry": args.entry, "value": value})
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-run":
+        try:
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            program_source = Path(args.source).read_text(encoding="utf-8")
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            emit_payload(
+                {
+                    "ok": True,
+                    "entry": args.entry,
+                    "source": str(args.source),
+                    "value": value,
+                }
+            )
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return
 
 

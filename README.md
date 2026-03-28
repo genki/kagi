@@ -25,6 +25,45 @@ CLI では `--json` を受け付け、失敗時は構造化診断を返します
 - `column`
 - `snippet`
 
+## Subset Language
+
+self-hosting 用の最小 subset を追加しています。
+
+- `fn`
+- `let`
+- `if / else`
+- `return`
+- `call`
+- `string / int / bool`
+
+利用できる builtin:
+
+- `eq`
+- `concat`
+- `extract_quoted`
+- `trim`
+
+## Self-Hosted Hello World
+
+`examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
+`examples/hello.ksrc` を入力にすると、quoted text を取り出して返します。
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
+```
+
+期待値:
+
+```json
+{
+  "ok": true,
+  "entry": "compile",
+  "source": "/home/vagrant/kagi/examples/hello.ksrc",
+  "value": "hello, world!"
+}
+```
+
 ## 対応範囲
 
 - owner / cell / heap

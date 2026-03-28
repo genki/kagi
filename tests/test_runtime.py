@@ -6,6 +6,7 @@ import sys
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_program_ir
+from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
     Cell,
     KagiRuntimeError,
@@ -183,6 +184,48 @@ class RuntimeTest(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["diagnostic"]["phase"], "parse")
         self.assertEqual(payload["diagnostic"]["code"], "parse_error")
+
+    def test_subset_program_runs_minimal_function_language(self):
+        source = """
+        fn main(name) {
+            let prefix = "hello, ";
+            return concat(prefix, name);
+        }
+        """
+        program = parse_subset_program(source)
+        self.assertEqual(len(program.functions), 1)
+        value = run_subset_program(source, entry="main", args=["world!"])
+        self.assertEqual(value, "hello, world!")
+
+    def test_selfhost_frontend_emits_hello_world(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
+        value = run_subset_program(frontend, entry="compile", args=[source])
+        self.assertEqual(value, "hello, world!")
+
+    def test_cli_selfhost_run_outputs_hello_world(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
 
 
 if __name__ == "__main__":

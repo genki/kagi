@@ -12,6 +12,7 @@ from .runtime import (
     export_owner,
     well_formed,
 )
+from .subset import FunctionDef, SubsetProgram, parse_subset_program, run_subset_program
 
 __all__ = [
     "Action",
@@ -20,10 +21,12 @@ __all__ = [
     "Diagnostic",
     "DiagnosticError",
     "ExecutionResult",
+    "FunctionDef",
     "Heap",
     "KagiRuntimeError",
     "LoanState",
     "ProgramIR",
+    "SubsetProgram",
     "action_to_string",
     "apply_action",
     "execute_bootstrap_program",
@@ -31,6 +34,8 @@ __all__ = [
     "export_owner",
     "parse_bootstrap_program",
     "parse_core_program",
+    "parse_subset_program",
+    "run_subset_program",
     "serialize_program_ir",
     "well_formed",
 ]

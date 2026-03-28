@@ -86,6 +86,10 @@
 - self-hosting 用 stdlib
 - self-hosted parser の最初の雛形
 
+状態:
+- 最小 subset evaluator と `selfhost-run` を追加
+- tiny frontend が `hello, world!` を返すところまで到達
+
 ## 非目標
 
 - 最初から optimizer を作ること
