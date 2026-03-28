@@ -95,6 +95,12 @@
 - bridge が typed object を tiny CapIR fragment へ lower できる
 - tiny CapIR fragment を実行する専用 runtime path がある
 - tiny source は複数 `print` 文を扱える
+- `front-half contracts v0` を追加
+  - `surface_ast.py`
+  - `hir.py`
+  - `artifact.py`
+  - `compile_result.py`
+  - `compile_source_v1(...)`
 
 ## 非目標
 

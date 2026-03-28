@@ -5,7 +5,9 @@ import json
 import sys
 from pathlib import Path
 
+from .artifact import artifact_v1_to_json
 from .capir_runtime import execute_and_inspect_capir_artifact, execute_capir_artifact, inspect_capir_artifact
+from .compile_result import compile_source_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
@@ -242,18 +244,17 @@ def main() -> None:
     if args.command == "selfhost-run":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            result = execute_and_inspect_capir_artifact(artifact)
+            compiled = compile_source_v1(frontend_source, program_source)
+            result = execute_and_inspect_capir_artifact(compiled.compile_artifact)
             if args.json:
-                ast = parse_selfhost_ast(frontend_source, program_source)
                 emit_payload(
                     {
                         "ok": True,
                         "entry": args.entry,
                         "source": str(args.source),
-                        "ast": ast,
+                        "ast": compiled.parse.raw_ast,
                         "capir": result.capir,
-                        "artifact": artifact,
+                        "artifact": compiled.raw_compile_artifact,
                         "value": result.output,
                     }
                 )
@@ -315,27 +316,16 @@ def main() -> None:
     if args.command == "selfhost-emit":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            ok = not (isinstance(value, str) and value.startswith("error:"))
-            ast = None
-            if args.json and ok:
-                ast = parse_selfhost_ast(frontend_source, program_source)
-            elif args.json:
-                parsed = parse_selfhost_ast(frontend_source, program_source)
-                ast = None if isinstance(parsed, str) and parsed.startswith("error:") else parsed
-            if ok:
-                ok = execute_capir_artifact(value).output is not None
+            compiled = compile_source_v1(frontend_source, program_source)
             emit_payload(
                 {
-                    "ok": ok,
+                    "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": ast,
-                    "artifact": value,
+                    "ast": compiled.parse.raw_ast,
+                    "artifact": artifact_v1_to_json(compiled.lower.artifact),
                 }
             )
-            if not ok:
-                raise SystemExit(1)
         except SystemExit:
             raise
         except Exception as exc:
@@ -345,28 +335,15 @@ def main() -> None:
     if args.command == "selfhost-capir":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            ast = parse_selfhost_ast(frontend_source, program_source)
-            if isinstance(ast, str) and ast.startswith("error:"):
-                emit_payload(
-                    {
-                        "ok": False,
-                        "entry": "parse",
-                        "source": str(args.source),
-                        "ast": None,
-                        "capir": None,
-                        "message": ast,
-                    }
-                )
-                raise SystemExit(1)
-            artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            compiled = compile_source_v1(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": ast,
-                    "artifact": artifact,
-                    "capir": inspect_capir_artifact(artifact),
+                    "ast": compiled.parse.raw_ast,
+                    "artifact": compiled.raw_compile_artifact,
+                    "capir": inspect_capir_artifact(compiled.compile_artifact),
                 }
             )
         except SystemExit:

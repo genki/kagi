@@ -6,6 +6,7 @@ import sys
 import json
 
 import kagi
+from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
     execute_and_inspect_capir_artifact,
@@ -934,9 +935,24 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(result.capir["serialized"], 'print "hello"\nprint "world"\n')
         self.assertEqual(result.output, "hello\nworld")
 
+    def test_compile_source_v1_returns_typed_pipeline_result(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+        compiled = compile_source_v1(frontend, source)
+        self.assertEqual(compiled.check.ok, True)
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(compiled.compile_artifact.texts, ["hello, world!"])
+        self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
+        self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
+
     def test_package_exports_artifact_abi_helpers(self):
         self.assertTrue(hasattr(kagi, "execute_capir_artifact"))
         self.assertTrue(hasattr(kagi, "inspect_capir_artifact"))
+        self.assertTrue(hasattr(kagi, "compile_source_v1"))
+        self.assertTrue(hasattr(kagi, "PrintArtifactV1"))
+        self.assertTrue(hasattr(kagi, "SurfaceProgramV1"))
+        self.assertTrue(hasattr(kagi, "HIRProgramV1"))
         self.assertFalse(hasattr(kagi, "parse_tiny_program_ast_json"))
         self.assertIsNone(importlib.util.find_spec("kagi.selfhost"))
 

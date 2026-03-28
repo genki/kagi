@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 
+from .artifact import PrintArtifactV1, artifact_v1_stdout, parse_artifact_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .ir import CapIRFragment, CapIRPrint, serialize_capir_fragment
 
@@ -39,47 +39,17 @@ def execute_and_inspect_capir_artifact(artifact: object) -> CapIRArtifactResult:
 
 
 def capir_fragment_from_artifact(artifact: object) -> CapIRFragment:
-    if not isinstance(artifact, str):
+    parsed = parse_artifact_v1(artifact)
+    if not isinstance(parsed, PrintArtifactV1):
         raise DiagnosticError(
-            diagnostic_from_runtime_error("capir-runtime", "artifact must be a string")
+            diagnostic_from_runtime_error("capir-runtime", "unsupported artifact payload")
         )
-    if artifact.startswith("error:"):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("capir-runtime", artifact)
-        )
-    try:
-        payload = json.loads(artifact)
-    except json.JSONDecodeError as exc:
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("capir-runtime", f"invalid artifact json: {exc.msg}")
-        ) from exc
-    if not isinstance(payload, dict):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("capir-runtime", "artifact must decode to an object")
-        )
-    kind = payload.get("kind")
-    if kind == "print_many":
-        texts = payload.get("texts")
-        if not isinstance(texts, list) or not all(isinstance(text, str) for text in texts):
-            raise DiagnosticError(
-                diagnostic_from_runtime_error("capir-runtime", "print_many artifact requires string texts")
-            )
-        return CapIRFragment(effect="print", ops=[CapIRPrint(text=text) for text in texts])
-    if kind == "print":
-        text = payload.get("text")
-        if not isinstance(text, str):
-            raise DiagnosticError(
-                diagnostic_from_runtime_error("capir-runtime", "print artifact requires string text")
-            )
-        return CapIRFragment(effect="print", ops=[CapIRPrint(text=text)])
-    raise DiagnosticError(
-        diagnostic_from_runtime_error("capir-runtime", f"unsupported artifact kind: {kind}")
-    )
+    return CapIRFragment(effect="print", ops=[CapIRPrint(text=text) for text in parsed.texts])
 
 
 def execute_capir_artifact(artifact: object) -> CapIRExecutionResult:
-    fragment = capir_fragment_from_artifact(artifact)
-    return execute_capir_fragment(fragment)
+    parsed = parse_artifact_v1(artifact)
+    return CapIRExecutionResult(output=artifact_v1_stdout(parsed))
 
 
 def execute_capir_fragment(fragment: CapIRFragment) -> CapIRExecutionResult:

@@ -14,6 +14,24 @@
 
 この境界を self-hosting 前の固定足場として扱います。
 
+## Front-Half Contracts v0
+
+front half の段階間 ABI は、いまは次の typed contract に寄せています。
+
+- `src/kagi/surface_ast.py`
+- `src/kagi/hir.py`
+- `src/kagi/artifact.py`
+- `src/kagi/compile_result.py`
+
+JSON は frontend/CLI 境界でだけ扱い、内部では typed object を使います。
+
+- `ParseArtifactV1`
+- `CheckArtifactV1`
+- `LowerArtifactV1`
+- `CompileResultV1`
+
+`compile_source_v1(...)` が、`parse -> check -> lower -> compile` を 1 つの typed result にまとめます。
+
 ## Diagnostics
 
 CLI では `--json` を受け付け、失敗時は構造化診断を返します。
@@ -56,10 +74,7 @@ self-hosting 用の最小 subset を追加しています。
 `examples/selfhost_frontend.ks` は KAGI subset で書いた tiny frontend です。
 いまは `print "..."` 文を受け付ける極小言語を対象にしています。複数行の `print` 文、`print concat("a","b")` のような最小式、`let x = ...` と `print x`、さらに `eq(...)` と `if(cond, then, else)`、`if cond { ... } else { ... }`、`fn name() { ... }` / `fn name(x) { ... }` と `call name()` / `call name("...")` を処理できます。
 
-現時点では parser/check/lower の一部を self-hosted 側へ寄せ始めており、単純な `print "..."` 1 行ケース、`print concat("...", "...")` 1 行ケース、`let x = "..."` / `print x`、`let x = concat("...", "...")` / `print x` の 2 行ケース、`fn name(x) { print concat(x, "...") }` + `call name("...")` の固定形は `examples/selfhost_frontend.ks` 自身が `ok` / AST / artifact を返します。より広い構文はまだ Python seed builtin に fallback します。
-
-Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す AST JSON を typed bridge object に変換します。
-さらに bridge は `TinyProgram -> CapIR fragment` の lowering を持ち、`src/kagi/capir_runtime.py` が tiny fragment を実行します。
+現時点では parser/check/lower の一部を self-hosted 側へ寄せ始めており、単純な `print "..."` 1 行ケース、`print concat("...", "...")` 1 行ケース、`let x = "..."` / `print x`、`let x = concat("...", "...")` / `print x` の 2 行ケース、`fn name(x) { print concat(x, "...") }` + `call name("...")` の固定形は `examples/selfhost_frontend.ks` 自身が `ok` / AST / artifact を返します。
 
 役割は 3 つに分けています。
 
@@ -72,7 +87,7 @@ Python 側には `src/kagi/selfhost.py` があり、self-hosted parser の返す
 - `compile(source)`:
   - 現在は `lower(source)` の alias
 
-`selfhost-run` は compile の返す artifact をそのまま実行します。以前のように AST から横で再 lower するのではなく、compiler output を主経路として扱います。
+`selfhost-run` は compile の返す artifact をそのまま実行します。非 JSON の主経路は `compile -> artifact -> stdout` です。
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
