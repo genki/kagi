@@ -1,7 +1,8 @@
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from kagi.artifact import PrintArtifactV1
 from kagi.compile_result import compile_source_v1
@@ -42,6 +43,24 @@ class BundleKirFutureTest(unittest.TestCase):
 
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
+
+    def test_compile_source_v1_still_calls_python_hir_to_kir_builtin(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
+
+        from kagi.bootstrap_builders import builtin_hir_to_kir
+        import kagi.lower_subset_to_kir as lower_subset_to_kir
+
+        spy = Mock(side_effect=builtin_hir_to_kir)
+        with patch(
+            "kagi.lower_subset_to_kir.SUBSET_KIR_BUILTINS",
+            {**lower_subset_to_kir.SUBSET_KIR_BUILTINS, "hir_to_kir": spy},
+        ):
+            compiled = compile_source_v1(frontend_source, source)
+
+        self.assertGreaterEqual(spy.call_count, 1)
+        self.assertEqual(compiled.stdout, "hello, world!")
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
