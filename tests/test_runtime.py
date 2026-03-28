@@ -4,6 +4,7 @@ import subprocess
 import sys
 import json
 
+import kagi
 from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artifact, execute_capir_fragment, inspect_capir_artifact
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
@@ -926,6 +927,11 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(payload["effect"], "print")
         self.assertEqual(payload["ops"], [{"text": "hello"}, {"text": "world"}])
         self.assertEqual(payload["serialized"], 'print "hello"\nprint "world"\n')
+
+    def test_package_exports_artifact_abi_helpers(self):
+        self.assertTrue(hasattr(kagi, "execute_capir_artifact"))
+        self.assertTrue(hasattr(kagi, "inspect_capir_artifact"))
+        self.assertFalse(hasattr(kagi, "parse_tiny_program_ast_json"))
 
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]
