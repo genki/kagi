@@ -212,6 +212,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {"kind": "print", "expr": {"kind": "string", "value": "hello, world!"}},
                 ],
@@ -241,6 +242,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {"kind": "print", "expr": {"kind": "string", "value": "hello"}},
                     {"kind": "print", "expr": {"kind": "string", "value": "world"}},
@@ -265,6 +267,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {
                         "kind": "print",
@@ -289,6 +292,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {
                         "kind": "let",
@@ -315,6 +319,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {
                         "kind": "let",
@@ -358,6 +363,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(ast),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {
                         "kind": "let",
@@ -387,6 +393,41 @@ class RuntimeTest(unittest.TestCase):
                             {"kind": "print", "expr": {"kind": "string", "value": "disabled"}},
                         ],
                     },
+                ],
+            },
+        )
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
+    def test_selfhost_frontend_supports_function_and_call(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_fn.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        lowered = run_subset_program(frontend, entry="lower", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "functions": [
+                    {
+                        "kind": "fn",
+                        "name": "emit_greeting",
+                        "body": [
+                            {
+                                "kind": "let",
+                                "name": "greeting",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "string", "value": "hello, "},
+                                    "right": {"kind": "string", "value": "world!"},
+                                },
+                            },
+                            {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                        ],
+                    }
+                ],
+                "statements": [
+                    {"kind": "call", "name": "emit_greeting"},
                 ],
             },
         )
@@ -429,6 +470,7 @@ class RuntimeTest(unittest.TestCase):
             json.loads(payload["ast"]),
             {
                 "kind": "program",
+                "functions": [],
                 "statements": [
                     {
                         "kind": "print",
@@ -452,6 +494,31 @@ class RuntimeTest(unittest.TestCase):
                 "--json",
                 str(root / "examples" / "selfhost_frontend.ks"),
                 str(root / "examples" / "hello_let.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+        self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
+
+    def test_cli_selfhost_run_outputs_function_call(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_fn.ksrc"),
             ],
             cwd=root,
             env={"PYTHONPATH": str(root / "src")},
@@ -680,9 +747,9 @@ class RuntimeTest(unittest.TestCase):
         capir_payload = __import__("json").loads(capir_proc.stdout)
         invalid_payload = __import__("json").loads(invalid_proc.stdout)
 
-        self.assertEqual(parse_payload["ast"], '{"kind":"program","statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
-        self.assertEqual(check_payload["ast"], '{"kind":"program","statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
-        self.assertEqual(emit_payload["ast"], '{"kind":"program","statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
+        self.assertEqual(parse_payload["ast"], '{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
+        self.assertEqual(check_payload["ast"], '{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
+        self.assertEqual(emit_payload["ast"], '{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello, world!"}}]}')
         self.assertEqual(check_payload["value"], "ok")
         self.assertEqual(emit_payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
         self.assertEqual(capir_payload["capir"]["serialized"], 'print "hello, world!"\n')

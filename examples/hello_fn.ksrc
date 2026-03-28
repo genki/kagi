@@ -1,0 +1,6 @@
+fn emit_greeting() {
+  let greeting = concat("hello, ", "world!")
+  print greeting
+}
+
+call emit_greeting()
