@@ -4,7 +4,7 @@ import subprocess
 import sys
 import json
 
-from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artifact, execute_capir_fragment
+from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artifact, execute_capir_fragment, inspect_capir_artifact
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
@@ -919,6 +919,13 @@ class RuntimeTest(unittest.TestCase):
         self.assertNotIn("parse_print_program", subset_module.BUILTINS)
         self.assertNotIn("validate_program_ast", subset_module.BUILTINS)
         self.assertNotIn("lower_program_artifact", subset_module.BUILTINS)
+
+    def test_inspect_capir_artifact_returns_serialized_view(self):
+        artifact = json.dumps({"kind": "print_many", "texts": ["hello", "world"]})
+        payload = inspect_capir_artifact(artifact)
+        self.assertEqual(payload["effect"], "print")
+        self.assertEqual(payload["ops"], [{"text": "hello"}, {"text": "world"}])
+        self.assertEqual(payload["serialized"], 'print "hello"\nprint "world"\n')
 
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]

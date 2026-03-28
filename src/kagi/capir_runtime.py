@@ -4,12 +4,21 @@ from dataclasses import dataclass
 import json
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
-from .ir import CapIRFragment, CapIRPrint
+from .ir import CapIRFragment, CapIRPrint, serialize_capir_fragment
 
 
 @dataclass(frozen=True)
 class CapIRExecutionResult:
     output: str
+
+
+def inspect_capir_artifact(artifact: object) -> dict[str, object]:
+    fragment = capir_fragment_from_artifact(artifact)
+    return {
+        "effect": fragment.effect,
+        "ops": [{"text": op.text} for op in fragment.ops],
+        "serialized": serialize_capir_fragment(fragment),
+    }
 
 
 def capir_fragment_from_artifact(artifact: object) -> CapIRFragment:

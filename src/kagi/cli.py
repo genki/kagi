@@ -5,12 +5,11 @@ import json
 import sys
 from pathlib import Path
 
-from .capir_runtime import capir_fragment_from_artifact, execute_capir_artifact
+from .capir_runtime import execute_capir_artifact, inspect_capir_artifact
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
-from .ir import action_to_string, serialize_capir_fragment
+from .ir import action_to_string
 from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
-from .selfhost import lower_tiny_program_to_capir, parse_tiny_program_ast_json
 from .subset import run_subset_program
 
 
@@ -143,7 +142,7 @@ def main() -> None:
     selfhost_capir_parser = subparsers.add_parser("selfhost-capir")
     selfhost_capir_parser.add_argument("frontend")
     selfhost_capir_parser.add_argument("source")
-    selfhost_capir_parser.add_argument("--entry", default="parse")
+    selfhost_capir_parser.add_argument("--entry", default="compile")
     add_json_flag(selfhost_capir_parser)
 
     args = parser.parse_args()
@@ -235,7 +234,7 @@ def main() -> None:
             program_source = Path(args.source).read_text(encoding="utf-8")
             ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            capir = capir_fragment_from_artifact(artifact)
+            capir = inspect_capir_artifact(artifact)
             value = execute_capir_artifact(artifact).output
             if args.json:
                 emit_payload(
@@ -244,11 +243,7 @@ def main() -> None:
                         "entry": args.entry,
                         "source": str(args.source),
                         "ast": ast,
-                        "capir": {
-                            "effect": capir.effect,
-                            "ops": [{"text": op.text} for op in capir.ops],
-                            "serialized": serialize_capir_fragment(capir),
-                        },
+                        "capir": capir,
                         "artifact": artifact,
                         "value": value,
                     }
@@ -268,7 +263,6 @@ def main() -> None:
                 value = ast
                 ok = False
             else:
-                parse_tiny_program_ast_json(ast)
                 value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
                 ok = value == "ok"
             emit_payload(
@@ -342,12 +336,12 @@ def main() -> None:
         try:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
-            ast = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
             if isinstance(ast, str) and ast.startswith("error:"):
                 emit_payload(
                     {
                         "ok": False,
-                        "entry": args.entry,
+                        "entry": "parse",
                         "source": str(args.source),
                         "ast": None,
                         "capir": None,
@@ -355,19 +349,15 @@ def main() -> None:
                     }
                 )
                 raise SystemExit(1)
-            tiny_program = parse_tiny_program_ast_json(ast)
-            capir = lower_tiny_program_to_capir(tiny_program)
+            artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
                     "ast": ast,
-                    "capir": {
-                        "effect": capir.effect,
-                        "ops": [{"text": op.text} for op in capir.ops],
-                        "serialized": serialize_capir_fragment(capir),
-                    },
+                    "artifact": artifact,
+                    "capir": inspect_capir_artifact(artifact),
                 }
             )
         except SystemExit:
