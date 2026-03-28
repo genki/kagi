@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .capir_runtime import execute_capir_artifact, inspect_capir_artifact
+from .capir_runtime import execute_and_inspect_capir_artifact, execute_capir_artifact, inspect_capir_artifact
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
@@ -79,6 +79,17 @@ def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
     if diagnostic.snippet:
         print(diagnostic.snippet, file=sys.stderr)
     raise SystemExit(1)
+
+
+def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, str]:
+    return (
+        Path(frontend_path).read_text(encoding="utf-8"),
+        Path(source_path).read_text(encoding="utf-8"),
+    )
+
+
+def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
+    return run_subset_program(frontend_source, entry="parse", args=[program_source])
 
 
 def main() -> None:
@@ -230,47 +241,45 @@ def main() -> None:
 
     if args.command == "selfhost-run":
         try:
-            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
-            program_source = Path(args.source).read_text(encoding="utf-8")
-            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
+            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            capir = inspect_capir_artifact(artifact)
-            value = execute_capir_artifact(artifact).output
+            result = execute_and_inspect_capir_artifact(artifact)
             if args.json:
+                ast = parse_selfhost_ast(frontend_source, program_source)
                 emit_payload(
                     {
                         "ok": True,
                         "entry": args.entry,
                         "source": str(args.source),
                         "ast": ast,
-                        "capir": capir,
+                        "capir": result.capir,
                         "artifact": artifact,
-                        "value": value,
+                        "value": result.output,
                     }
                 )
             else:
-                emit_text(value)
+                emit_text(result.output)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return
 
     if args.command == "selfhost-check":
         try:
-            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
-            program_source = Path(args.source).read_text(encoding="utf-8")
-            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
-            if isinstance(ast, str) and ast.startswith("error:"):
-                value = ast
-                ok = False
-            else:
-                value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-                ok = value == "ok"
+            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ok = value == "ok"
+            ast = None
+            if args.json and ok:
+                ast = parse_selfhost_ast(frontend_source, program_source)
+            elif args.json:
+                parsed = parse_selfhost_ast(frontend_source, program_source)
+                ast = None if isinstance(parsed, str) and parsed.startswith("error:") else parsed
             emit_payload(
                 {
                     "ok": ok,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": None if isinstance(ast, str) and ast.startswith("error:") else ast,
+                    "ast": ast,
                     "value": value,
                 }
             )
@@ -284,9 +293,8 @@ def main() -> None:
 
     if args.command == "selfhost-parse":
         try:
-            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
-            program_source = Path(args.source).read_text(encoding="utf-8")
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            value = parse_selfhost_ast(frontend_source, program_source)
             ok = not str(value).startswith("error:")
             emit_payload(
                 {
@@ -306,21 +314,23 @@ def main() -> None:
 
     if args.command == "selfhost-emit":
         try:
-            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
-            program_source = Path(args.source).read_text(encoding="utf-8")
-            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
-            if isinstance(ast, str) and ast.startswith("error:"):
-                value = ast
-                ok = False
-            else:
-                value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            ok = not (isinstance(value, str) and value.startswith("error:"))
+            ast = None
+            if args.json and ok:
+                ast = parse_selfhost_ast(frontend_source, program_source)
+            elif args.json:
+                parsed = parse_selfhost_ast(frontend_source, program_source)
+                ast = None if isinstance(parsed, str) and parsed.startswith("error:") else parsed
+            if ok:
                 ok = execute_capir_artifact(value).output is not None
             emit_payload(
                 {
                     "ok": ok,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": None if isinstance(ast, str) and ast.startswith("error:") else ast,
+                    "ast": ast,
                     "artifact": value,
                 }
             )
@@ -334,9 +344,8 @@ def main() -> None:
 
     if args.command == "selfhost-capir":
         try:
-            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
-            program_source = Path(args.source).read_text(encoding="utf-8")
-            ast = run_subset_program(frontend_source, entry="parse", args=[program_source])
+            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            ast = parse_selfhost_ast(frontend_source, program_source)
             if isinstance(ast, str) and ast.startswith("error:"):
                 emit_payload(
                     {

@@ -6,7 +6,13 @@ import sys
 import json
 
 import kagi
-from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artifact, execute_capir_fragment, inspect_capir_artifact
+from kagi.capir_runtime import (
+    capir_fragment_from_artifact,
+    execute_and_inspect_capir_artifact,
+    execute_capir_artifact,
+    execute_capir_fragment,
+    inspect_capir_artifact,
+)
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
@@ -921,6 +927,12 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(payload["effect"], "print")
         self.assertEqual(payload["ops"], [{"text": "hello"}, {"text": "world"}])
         self.assertEqual(payload["serialized"], 'print "hello"\nprint "world"\n')
+
+    def test_execute_and_inspect_capir_artifact_returns_capir_and_output(self):
+        artifact = json.dumps({"kind": "print_many", "texts": ["hello", "world"]})
+        result = execute_and_inspect_capir_artifact(artifact)
+        self.assertEqual(result.capir["serialized"], 'print "hello"\nprint "world"\n')
+        self.assertEqual(result.output, "hello\nworld")
 
     def test_package_exports_artifact_abi_helpers(self):
         self.assertTrue(hasattr(kagi, "execute_capir_artifact"))

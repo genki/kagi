@@ -12,6 +12,12 @@ class CapIRExecutionResult:
     output: str
 
 
+@dataclass(frozen=True)
+class CapIRArtifactResult:
+    capir: dict[str, object]
+    output: str
+
+
 def inspect_capir_artifact(artifact: object) -> dict[str, object]:
     fragment = capir_fragment_from_artifact(artifact)
     return {
@@ -19,6 +25,13 @@ def inspect_capir_artifact(artifact: object) -> dict[str, object]:
         "ops": [{"text": op.text} for op in fragment.ops],
         "serialized": serialize_capir_fragment(fragment),
     }
+
+
+def execute_and_inspect_capir_artifact(artifact: object) -> CapIRArtifactResult:
+    return CapIRArtifactResult(
+        capir=inspect_capir_artifact(artifact),
+        output=execute_capir_artifact(artifact).output,
+    )
 
 
 def capir_fragment_from_artifact(artifact: object) -> CapIRFragment:
