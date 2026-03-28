@@ -245,12 +245,20 @@ fn build_print_many_artifact_two(first_text, second_text) {
   );
 }
 
+fn build_print_many_json_1(text) {
+  let q = quote();
+  return concat(
+    "{\"kind\":\"print_many\",\"texts\":[",
+    concat(q, concat(text, concat(q, "]}")))
+  );
+}
+
 fn render_if_output(left_text, right_text, expected_text, disabled_text) {
   let greeting_text = concat(left_text, right_text);
   if eq(greeting_text, expected_text) {
-    return print_many_artifact(greeting_text);
+    return build_print_many_json_1(greeting_text);
   } else {
-    return print_many_artifact(disabled_text);
+    return build_print_many_json_1(disabled_text);
   }
 }
 
@@ -469,7 +477,7 @@ fn try_lower_zero_arg_fn_call(source) {
                       if eq(fn_name, call_name) {
                         if eq(call_args, "") {
                           if eq(var_name, print_name) {
-                            return print_many_artifact(concat(left_text, right_text));
+                            return build_print_many_json_1(concat(left_text, right_text));
                           } else {
                             return "";
                           }
@@ -3261,12 +3269,12 @@ fn try_lower_zero_arg_fn_call_simple(source) {
               let call_name = before_substring(after_substring(line5, "call "), "(");
               if is_identifier(fn_name) {
                 if is_identifier(var_name) {
-                  if eq(print_name, var_name) {
-                    if eq(call_name, fn_name) {
-                      return print_many_artifact(concat(left_text, right_text));
-                    } else {
-                      return "";
-                    }
+	                  if eq(print_name, var_name) {
+	                    if eq(call_name, fn_name) {
+	                      return build_print_many_json_1(concat(left_text, right_text));
+	                    } else {
+	                      return "";
+	                    }
                   } else {
                     return "";
                   }
@@ -3465,7 +3473,7 @@ fn try_lower_single_print(source) {
       let quoted = extract_quoted(text);
       let rebuilt = concat(prefix, concat(quoted, q));
       if eq(rebuilt, text) {
-        return print_many_artifact(quoted);
+        return build_print_many_json_1(quoted);
       } else {
         return "";
       }
@@ -3485,7 +3493,7 @@ fn try_lower_single_print_concat(source) {
     let after_first = after_quote_comma(text);
     let quoted2 = extract_quoted(after_first);
     if eq(concat_call_matches(text, "print concat(", quoted1, quoted2), "ok") {
-      return print_many_artifact(concat(quoted1, quoted2));
+      return build_print_many_json_1(concat(quoted1, quoted2));
     } else {
       return "";
     }
@@ -3510,7 +3518,7 @@ fn try_lower_simple_let_print(source) {
       if is_identifier(name) {
         if eq(rebuilt1, line1) {
           if eq(rebuilt2, line2) {
-            return print_many_artifact(quoted);
+            return build_print_many_json_1(quoted);
           } else {
             return "";
           }
@@ -3545,7 +3553,7 @@ fn try_lower_simple_let_concat_print(source) {
         if is_identifier(name) {
           if eq(concat_call_matches(line1, concat("let ", concat(name, " = concat(")), quoted1, quoted2), "ok") {
             if eq(rebuilt2, line2) {
-              return print_many_artifact(concat(quoted1, quoted2));
+              return build_print_many_json_1(concat(quoted1, quoted2));
             } else {
               return "";
             }
@@ -3602,7 +3610,7 @@ fn try_lower_simple_single_arg_fn_call(source) {
                     if eq(rebuilt1, line1) {
                       if eq(rebuilt2, line2) {
                         if eq(rebuilt4, line4) {
-                          return print_many_artifact(concat(arg_text, suffix));
+                          return build_print_many_json_1(concat(arg_text, suffix));
                         } else {
                           return "";
                         }

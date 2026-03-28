@@ -96,6 +96,7 @@ class BundleKirFutureTest(unittest.TestCase):
         }
         forbidden_builder_names = (
             "print_ast",
+            "print_many_artifact",
             "program_ast",
             "program_if_expr_print_ast",
             "program_if_stmt_ast",
@@ -186,6 +187,7 @@ class BundleKirFutureTest(unittest.TestCase):
             "hello_if_stmt.ksrc",
         )
         forbidden_builder_names = (
+            "print_many_artifact",
             "program_ast",
             "program_if_expr_print_ast",
             "program_if_stmt_ast",
@@ -222,6 +224,43 @@ class BundleKirFutureTest(unittest.TestCase):
                 self.assertFalse(value.startswith("error:"))
                 for name, spy in forbidden_builtins.items():
                     self.assertEqual(spy.call_count, 0, f"{filename}:{name}")
+
+    def test_canonical_frontend_hello_twice_does_not_call_print_many_artifact_in_lower_compile_path(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_twice.ksrc").read_text(encoding="utf-8")
+        print_many_spy = Mock(side_effect=AssertionError("print_many_artifact should not be used by canonical lower/compile path"))
+
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {
+                **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                "print_many_artifact": print_many_spy,
+            },
+        ):
+            lowered = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                frontend_source,
+                entry="lower",
+                args=[source],
+            )
+            compiled = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                frontend_source,
+                entry="compile",
+                args=[source],
+            )
+            pipeline = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                frontend_source,
+                entry="pipeline",
+                args=[source],
+            )
+            bundle_compiled = compile_source_v1(frontend_source, source)
+
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello", "world"]})
+        self.assertEqual(json.loads(compiled), {"kind": "print_many", "texts": ["hello", "world"]})
+        self.assertEqual(json.loads(pipeline)["artifact"], {"kind": "print_many", "texts": ["hello", "world"]})
+        self.assertEqual(bundle_compiled.stdout, "hello\nworld")
+        self.assertEqual(print_many_spy.call_count, 0)
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
