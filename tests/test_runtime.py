@@ -305,6 +305,49 @@ class RuntimeTest(unittest.TestCase):
         )
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
 
+    def test_selfhost_frontend_supports_if_and_eq_expression(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_if.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        lowered = run_subset_program(frontend, entry="lower", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "statements": [
+                    {
+                        "kind": "let",
+                        "name": "greeting",
+                        "expr": {
+                            "kind": "concat",
+                            "left": {"kind": "string", "value": "hello, "},
+                            "right": {"kind": "string", "value": "world!"},
+                        },
+                    },
+                    {
+                        "kind": "let",
+                        "name": "enabled",
+                        "expr": {
+                            "kind": "eq",
+                            "left": {"kind": "var", "name": "greeting"},
+                            "right": {"kind": "string", "value": "hello, world!"},
+                        },
+                    },
+                    {
+                        "kind": "print",
+                        "expr": {
+                            "kind": "if",
+                            "condition": {"kind": "var", "name": "enabled"},
+                            "then": {"kind": "var", "name": "greeting"},
+                            "else": {"kind": "string", "value": "disabled"},
+                        },
+                    },
+                ],
+            },
+        )
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -365,6 +408,31 @@ class RuntimeTest(unittest.TestCase):
                 "--json",
                 str(root / "examples" / "selfhost_frontend.ks"),
                 str(root / "examples" / "hello_let.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+        self.assertEqual(payload["capir"]["serialized"], 'print "hello, world!"\n')
+
+    def test_cli_selfhost_run_outputs_if_expression(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_if.ksrc"),
             ],
             cwd=root,
             env={"PYTHONPATH": str(root / "src")},

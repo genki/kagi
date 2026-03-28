@@ -24,9 +24,27 @@ class TinyString:
 
 
 @dataclass(frozen=True)
+class TinyBool:
+    value: bool
+
+
+@dataclass(frozen=True)
 class TinyConcat:
     left: "TinyExpr"
     right: "TinyExpr"
+
+
+@dataclass(frozen=True)
+class TinyEq:
+    left: "TinyExpr"
+    right: "TinyExpr"
+
+
+@dataclass(frozen=True)
+class TinyIfExpr:
+    condition: "TinyExpr"
+    then_expr: "TinyExpr"
+    else_expr: "TinyExpr"
 
 
 @dataclass(frozen=True)
@@ -34,7 +52,7 @@ class TinyVar:
     name: str
 
 
-TinyExpr = TinyString | TinyConcat | TinyVar
+TinyExpr = TinyString | TinyBool | TinyConcat | TinyEq | TinyIfExpr | TinyVar
 TinyStmt = TinyLet | TinyPrint
 
 
@@ -102,6 +120,13 @@ def parse_tiny_expr(expr: object) -> TinyExpr:
                 diagnostic_from_runtime_error("selfhost-bridge", "string expression requires value")
             )
         return TinyString(value=value)
+    if kind == "bool":
+        value = expr.get("value")
+        if not isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "bool expression requires value")
+            )
+        return TinyBool(value=value)
     if kind == "var":
         name = expr.get("name")
         if not isinstance(name, str):
@@ -113,6 +138,17 @@ def parse_tiny_expr(expr: object) -> TinyExpr:
         return TinyConcat(
             left=parse_tiny_expr(expr.get("left")),
             right=parse_tiny_expr(expr.get("right")),
+        )
+    if kind == "eq":
+        return TinyEq(
+            left=parse_tiny_expr(expr.get("left")),
+            right=parse_tiny_expr(expr.get("right")),
+        )
+    if kind == "if":
+        return TinyIfExpr(
+            condition=parse_tiny_expr(expr.get("condition")),
+            then_expr=parse_tiny_expr(expr.get("then")),
+            else_expr=parse_tiny_expr(expr.get("else")),
         )
     raise DiagnosticError(
         diagnostic_from_runtime_error("selfhost-bridge", "unsupported expression in program ast")
@@ -130,14 +166,19 @@ def lower_tiny_program_to_capir(program: TinyProgram) -> CapIRFragment:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "tiny program requires at least one statement")
         )
-    env: dict[str, str] = {}
+    env: dict[str, str | bool] = {}
     ops: list[CapIRPrint] = []
     for stmt in program.statements:
         if isinstance(stmt, TinyLet):
             env[stmt.name] = eval_tiny_expr(stmt.expr, env)
             continue
         if isinstance(stmt, TinyPrint):
-            ops.append(CapIRPrint(text=eval_tiny_expr(stmt.expr, env)))
+            value = eval_tiny_expr(stmt.expr, env)
+            if not isinstance(value, str):
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("selfhost-bridge", "print requires string expression")
+                )
+            ops.append(CapIRPrint(text=value))
             continue
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-bridge", "unsupported tiny statement")
@@ -157,8 +198,10 @@ def render_tiny_program(program: TinyProgram) -> str:
     return "\n".join(op.text for op in lower_tiny_program_to_capir(program).ops)
 
 
-def eval_tiny_expr(expr: TinyExpr, env: dict[str, str]) -> str:
+def eval_tiny_expr(expr: TinyExpr, env: dict[str, str | bool]) -> str | bool:
     if isinstance(expr, TinyString):
+        return expr.value
+    if isinstance(expr, TinyBool):
         return expr.value
     if isinstance(expr, TinyVar):
         if expr.name not in env:
@@ -167,7 +210,22 @@ def eval_tiny_expr(expr: TinyExpr, env: dict[str, str]) -> str:
             )
         return env[expr.name]
     if isinstance(expr, TinyConcat):
-        return eval_tiny_expr(expr.left, env) + eval_tiny_expr(expr.right, env)
+        left = eval_tiny_expr(expr.left, env)
+        right = eval_tiny_expr(expr.right, env)
+        if not isinstance(left, str) or not isinstance(right, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "concat requires string operands")
+            )
+        return left + right
+    if isinstance(expr, TinyEq):
+        return eval_tiny_expr(expr.left, env) == eval_tiny_expr(expr.right, env)
+    if isinstance(expr, TinyIfExpr):
+        condition = eval_tiny_expr(expr.condition, env)
+        if not isinstance(condition, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("selfhost-bridge", "if requires boolean condition")
+            )
+        return eval_tiny_expr(expr.then_expr if condition else expr.else_expr, env)
     raise DiagnosticError(
         diagnostic_from_runtime_error("selfhost-bridge", "unsupported tiny expression")
     )

@@ -1,0 +1,3 @@
+let greeting = concat("hello, ", "world!")
+let enabled = eq(greeting, "hello, world!")
+print if(enabled, greeting, "disabled")

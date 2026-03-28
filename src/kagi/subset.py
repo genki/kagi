@@ -301,6 +301,10 @@ def parse_tiny_expr(expr: str) -> dict | None:
     expr = expr.strip()
     if expr.startswith('"') and expr.endswith('"') and len(expr) >= 2:
         return {"kind": "string", "value": expr[1:-1]}
+    if expr == "true":
+        return {"kind": "bool", "value": True}
+    if expr == "false":
+        return {"kind": "bool", "value": False}
     prefix = 'concat('
     if expr.startswith(prefix) and expr.endswith(')'):
         inner = expr[len(prefix):-1]
@@ -312,6 +316,29 @@ def parse_tiny_expr(expr: str) -> dict | None:
         if left is None or right is None:
             return None
         return {"kind": "concat", "left": left, "right": right}
+    prefix = 'eq('
+    if expr.startswith(prefix) and expr.endswith(')'):
+        inner = expr[len(prefix):-1]
+        parts = split_concat_args(inner)
+        if parts is None or len(parts) != 2:
+            return None
+        left = parse_tiny_expr(parts[0])
+        right = parse_tiny_expr(parts[1])
+        if left is None or right is None:
+            return None
+        return {"kind": "eq", "left": left, "right": right}
+    prefix = 'if('
+    if expr.startswith(prefix) and expr.endswith(')'):
+        inner = expr[len(prefix):-1]
+        parts = split_concat_args(inner)
+        if parts is None or len(parts) != 3:
+            return None
+        condition = parse_tiny_expr(parts[0])
+        then_expr = parse_tiny_expr(parts[1])
+        else_expr = parse_tiny_expr(parts[2])
+        if condition is None or then_expr is None or else_expr is None:
+            return None
+        return {"kind": "if", "condition": condition, "then": then_expr, "else": else_expr}
     if expr and expr.replace("_", "").isalnum():
         return {"kind": "var", "name": expr}
     return None
@@ -400,6 +427,8 @@ def validate_tiny_expr(expr: object, defined: set[str]) -> str:
     kind = expr.get("kind")
     if kind == "string":
         return "ok" if isinstance(expr.get("value"), str) else "error"
+    if kind == "bool":
+        return "ok" if isinstance(expr.get("value"), bool) else "error"
     if kind == "var":
         name = expr.get("name")
         return "ok" if isinstance(name, str) and name in defined else "error"
@@ -407,25 +436,49 @@ def validate_tiny_expr(expr: object, defined: set[str]) -> str:
         left_ok = validate_tiny_expr(expr.get("left"), defined)
         right_ok = validate_tiny_expr(expr.get("right"), defined)
         return "ok" if left_ok == "ok" and right_ok == "ok" else "error"
+    if kind == "eq":
+        left_ok = validate_tiny_expr(expr.get("left"), defined)
+        right_ok = validate_tiny_expr(expr.get("right"), defined)
+        return "ok" if left_ok == "ok" and right_ok == "ok" else "error"
+    if kind == "if":
+        cond_ok = validate_tiny_expr(expr.get("condition"), defined)
+        then_ok = validate_tiny_expr(expr.get("then"), defined)
+        else_ok = validate_tiny_expr(expr.get("else"), defined)
+        return "ok" if cond_ok == "ok" and then_ok == "ok" and else_ok == "ok" else "error"
     return "error"
 
 
-def eval_tiny_expr(expr: object, env: dict[str, str]) -> str | None:
+def eval_tiny_expr(expr: object, env: dict[str, str | bool]) -> str | bool | None:
     if not isinstance(expr, dict):
         return None
     kind = expr.get("kind")
     if kind == "string":
         value = expr.get("value")
         return value if isinstance(value, str) else None
+    if kind == "bool":
+        value = expr.get("value")
+        return value if isinstance(value, bool) else None
     if kind == "var":
         name = expr.get("name")
         return env.get(name) if isinstance(name, str) else None
     if kind == "concat":
         left = eval_tiny_expr(expr.get("left"), env)
         right = eval_tiny_expr(expr.get("right"), env)
-        if left is None or right is None:
+        if not isinstance(left, str) or not isinstance(right, str):
             return None
         return left + right
+    if kind == "eq":
+        left = eval_tiny_expr(expr.get("left"), env)
+        right = eval_tiny_expr(expr.get("right"), env)
+        if left is None or right is None:
+            return None
+        return left == right
+    if kind == "if":
+        condition = eval_tiny_expr(expr.get("condition"), env)
+        if not isinstance(condition, bool):
+            return None
+        branch = expr.get("then") if condition else expr.get("else")
+        return eval_tiny_expr(branch, env)
     return None
 
 
@@ -441,7 +494,7 @@ def builtin_lower_program_artifact(ast: object) -> str:
     statements = payload.get("statements")
     if not isinstance(statements, list) or len(statements) == 0:
         return "error: invalid program ast"
-    env: dict[str, str] = {}
+    env: dict[str, str | bool] = {}
     texts: list[str] = []
     for stmt in statements:
         if not isinstance(stmt, dict):
@@ -457,7 +510,7 @@ def builtin_lower_program_artifact(ast: object) -> str:
         if kind != "print":
             return "error: invalid program ast"
         value = eval_tiny_expr(stmt.get("expr"), env)
-        if value is None:
+        if not isinstance(value, str):
             return "error: invalid program ast"
         texts.append(value)
     return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
