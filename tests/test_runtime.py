@@ -237,6 +237,33 @@ class RuntimeTest(unittest.TestCase):
             },
         )
 
+    def test_subset_builtins_program_let_concat_print_ast_matches_current_shape(self):
+        source = """
+        fn main() {
+            return program_let_concat_print_ast("greeting", "hello, ", "world!");
+        }
+        """
+        value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(
+            json.loads(value),
+            {
+                "kind": "program",
+                "functions": [],
+                "statements": [
+                    {
+                        "kind": "let",
+                        "name": "greeting",
+                        "expr": {
+                            "kind": "concat",
+                            "left": {"kind": "string", "value": "hello, "},
+                            "right": {"kind": "string", "value": "world!"},
+                        },
+                    },
+                    {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                ],
+            },
+        )
+
     def test_subset_builtins_program_single_arg_fn_call_ast_matches_current_shape(self):
         source = """
         fn main() {
@@ -405,6 +432,31 @@ class RuntimeTest(unittest.TestCase):
                 "functions": [],
                 "statements": [
                     {"kind": "let", "name": "greeting", "expr": {"kind": "string", "value": "hello, world!"}},
+                    {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
+                ],
+            },
+        )
+
+    def test_selfhost_frontend_selfhosts_simple_let_concat_print(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_let_concat.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "functions": [],
+                "statements": [
+                    {
+                        "kind": "let",
+                        "name": "greeting",
+                        "expr": {
+                            "kind": "concat",
+                            "left": {"kind": "string", "value": "hello, "},
+                            "right": {"kind": "string", "value": "world!"},
+                        },
+                    },
                     {"kind": "print", "expr": {"kind": "var", "name": "greeting"}},
                 ],
             },
@@ -761,6 +813,29 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "ok")
 
+    def test_cli_selfhost_check_outputs_ok_for_selfhosted_let_concat_print(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-check",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_let_concat.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "ok")
+
     def test_cli_selfhost_check_outputs_ok_for_selfhosted_function_call(self):
         root = Path(__file__).resolve().parents[1]
         proc = subprocess.run(
@@ -818,6 +893,29 @@ class RuntimeTest(unittest.TestCase):
                 "--json",
                 str(root / "examples" / "selfhost_frontend.ks"),
                 str(root / "examples" / "hello_let_string.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+
+    def test_cli_selfhost_emit_outputs_selfhosted_let_concat_artifact(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-emit",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_let_concat.ksrc"),
             ],
             cwd=root,
             env={"PYTHONPATH": str(root / "src")},
