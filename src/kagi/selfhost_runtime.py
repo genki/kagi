@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .kir import parse_kir_program_v0, serialize_kir_program_v0
 from .kir_runtime import execute_kir_entry_v0
 from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, execute_subset_entry_via_kir_v0, lower_subset_program_to_kir_v0
+from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1
 from .subset_parser import parse_subset_program
 
 
@@ -15,6 +17,22 @@ def execute_selfhost_frontend_entry_v1(frontend_source: str, *, entry: str, args
     if kir is not None:
         return execute_kir_entry_v0(kir, entry=entry, args=list(args), builtins=SUBSET_KIR_BUILTINS)
     return execute_subset_entry_via_kir_v0(frontend_source, entry=entry, args=list(args))
+
+
+def execute_selfhost_frontend_pipeline_bundle_v1(
+    frontend_source: str,
+    program_source: str,
+) -> SelfhostPipelineBundleV1:
+    bundle_raw = execute_selfhost_frontend_entry_v1(
+        frontend_source,
+        entry="pipeline",
+        args=[program_source],
+    )
+    if not isinstance(bundle_raw, str) or bundle_raw.startswith("error:"):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("selfhost-pipeline", str(bundle_raw))
+        )
+    return parse_selfhost_pipeline_bundle_v1(bundle_raw)
 
 
 def compile_selfhost_frontend_to_kir_v1(frontend_source: str) -> str:

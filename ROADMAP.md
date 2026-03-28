@@ -84,8 +84,10 @@
     - `after_substring`
     - `is_identifier`
     を外した
+- Stage 3: bundle decoder の compatibility shim 化は完了
+  - `compile_result.py` は raw bundle decoder を直接使わない
+  - selfhost runtime の typed bundle API を主経路にした
 - 現在の主 blocker:
-  - Python bundle decoder
   - Python KIR executor
   - Python core expression builtin (`concat`, `eq`)
 

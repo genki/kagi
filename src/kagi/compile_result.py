@@ -3,13 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .artifact import PrintArtifactV1, artifact_v1_stdout
-from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .effects import EffectSummaryV1
 from .hir import HIRProgramV1
 from .kir import KIRProgramV1
 from .resolve import ResolvedProgramV1
-from .selfhost_bundle import parse_selfhost_pipeline_bundle_v1
-from .selfhost_runtime import execute_selfhost_frontend_entry_v1
+from .selfhost_runtime import execute_selfhost_frontend_pipeline_bundle_v1
 from .surface_ast import SurfaceProgramV1
 from .typecheck import TypecheckedProgramV1
 
@@ -57,12 +55,7 @@ class CompileResultV1:
 
 def compile_source_v1(frontend_source: str, program_source: str) -> CompileResultV1:
     frontend_entry = "pipeline"
-    bundle_raw = execute_selfhost_frontend_entry_v1(frontend_source, entry=frontend_entry, args=[program_source])
-    if not isinstance(bundle_raw, str) or bundle_raw.startswith("error:"):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-pipeline", str(bundle_raw))
-        )
-    bundle = parse_selfhost_pipeline_bundle_v1(bundle_raw)
+    bundle = execute_selfhost_frontend_pipeline_bundle_v1(frontend_source, program_source)
     surface_ast = bundle.surface_ast
 
     hir = bundle.hir

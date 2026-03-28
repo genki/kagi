@@ -38,8 +38,7 @@ class BundleKirFutureTest(unittest.TestCase):
             compile_artifact=PrintArtifactV1(texts=["hello"]),
         )
 
-        with patch("kagi.compile_result.execute_selfhost_frontend_entry_v1", return_value="bundle"):
-            with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", return_value=bundle):
+        with patch("kagi.compile_result.execute_selfhost_frontend_pipeline_bundle_v1", return_value=bundle):
                 compiled = compile_source_v1(frontend_source, "ignored source")
 
         self.assertEqual(compiled.lower.kir, kir)
@@ -73,24 +72,36 @@ class BundleKirFutureTest(unittest.TestCase):
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
-        with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("python bundle decoder is still required")):
+        with patch("kagi.selfhost_runtime.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("python bundle decoder is still required")):
             with self.assertRaisesRegex(AssertionError, "python bundle decoder is still required"):
-                compile_source_v1(frontend_source, source)
+                selfhost_runtime.execute_selfhost_frontend_pipeline_bundle_v1(frontend_source, source)
 
-    def test_compile_source_v1_canonical_frontend_uses_python_bundle_decoder(self):
+    def test_compile_source_v1_canonical_frontend_uses_typed_bundle_api(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
 
-        with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", wraps=parse_selfhost_pipeline_bundle_v1) as bundle_spy:
+        with patch("kagi.compile_result.execute_selfhost_frontend_pipeline_bundle_v1", wraps=selfhost_runtime.execute_selfhost_frontend_pipeline_bundle_v1) as bundle_api_spy:
             compiled = compile_source_v1(frontend_source, source)
 
         self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertEqual(bundle_api_spy.call_count, 1)
+        self.assertEqual(bundle_api_spy.call_args.args, (frontend_source, source))
+        self.assertEqual(compiled.metadata.frontend_entry, "pipeline")
+
+    def test_execute_selfhost_frontend_pipeline_bundle_v1_uses_python_bundle_decoder(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.selfhost_runtime.parse_selfhost_pipeline_bundle_v1", wraps=parse_selfhost_pipeline_bundle_v1) as bundle_spy:
+            bundle = selfhost_runtime.execute_selfhost_frontend_pipeline_bundle_v1(frontend_source, source)
+
         self.assertEqual(bundle_spy.call_count, 1)
         raw_bundle = bundle_spy.call_args.args[0]
         self.assertIsInstance(raw_bundle, str)
         self.assertIn('"kind":"pipeline_bundle"', raw_bundle)
-        self.assertEqual(compiled.metadata.frontend_entry, "pipeline")
+        self.assertEqual(bundle.raw_check, "ok")
 
     def test_compile_source_v1_canonical_frontend_does_not_call_python_string_helpers(self):
         root = Path(__file__).resolve().parents[1]
