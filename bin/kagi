@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "KAGI venv is not initialized: $ROOT_DIR/.venv" >&2
+  echo "Run: python3 -m venv $ROOT_DIR/.venv && $ROOT_DIR/.venv/bin/pip install -e $ROOT_DIR" >&2
+  exit 1
+fi
+
+export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$VENV_PYTHON" -m kagi.cli "$@"

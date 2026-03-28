@@ -1,0 +1,11 @@
+let epoch e0 = 10
+let key k0 = 7
+
+owner cell alive idle
+
+borrow_shared cell e0
+assert_export cell shared e0
+end_shared cell e0
+borrow_mut cell k0
+assert_export cell mut
+end_mut cell k0

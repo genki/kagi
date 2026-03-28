@@ -1,0 +1,87 @@
+# KAGI Runtime
+
+`KAGI_design.md` と `KAGI_core.lean` にある最小核を、そのまま実行できる core runtime です。
+
+## 対応範囲
+
+- owner / cell / heap
+- loan state
+  - `idle`
+  - `mut key`
+  - `shared epoch count`
+- actions
+  - `borrow_mut`
+  - `end_mut`
+  - `borrow_shared`
+  - `end_shared`
+  - `drop`
+- well-formedness check
+- exported summary
+  - `idle`
+  - `mut`
+  - `shared epoch`
+
+## DSL
+
+```text
+owner 0 alive idle
+owner 1 alive idle
+
+borrow_shared 0 10
+borrow_shared 0 10
+end_shared 0 10
+borrow_mut 1 7
+end_mut 1 7
+drop 1
+```
+
+## Bootstrap Syntax
+
+```text
+let epoch e0 = 10
+let key k0 = 7
+
+owner cell alive idle
+
+borrow_shared cell e0
+assert_export cell shared e0
+end_shared cell e0
+borrow_mut cell k0
+assert_export cell mut
+end_mut cell k0
+```
+
+## 実行
+
+```bash
+cd /home/vagrant/kagi
+python3 -m kagi.cli run examples/basic.kagi
+```
+
+または
+
+```bash
+cd /home/vagrant/kagi
+PYTHONPATH=src python3 -m kagi.cli run examples/basic.kagi
+```
+
+## インストール
+
+```bash
+cd /home/vagrant/kagi
+python3 -m venv .venv
+.venv/bin/pip install -e .
+mkdir -p ~/.local/bin
+ln -sf /home/vagrant/kagi/bin/kagi ~/.local/bin/kagi
+```
+
+`~/.local/bin` が `PATH` に入っていれば、次のように実行できます。
+
+```bash
+kagi run /home/vagrant/kagi/examples/basic.kagi
+kagi trace /home/vagrant/kagi/examples/basic.kagi
+kagi check /home/vagrant/kagi/examples/basic.kagi
+kagi exports /home/vagrant/kagi/examples/basic.kagi
+kagi bootstrap-check /home/vagrant/kagi/examples/bootstrap.kg
+kagi bootstrap-trace /home/vagrant/kagi/examples/bootstrap.kg
+```

@@ -1,0 +1,9 @@
+owner 0 alive idle
+owner 1 alive idle
+
+borrow_shared 0 10
+borrow_shared 0 10
+end_shared 0 10
+borrow_mut 1 7
+end_mut 1 7
+drop 1
