@@ -6,7 +6,13 @@ import sys
 from pathlib import Path
 
 from .artifact import artifact_v1_to_json
-from .capir_runtime import execute_and_inspect_capir_artifact, execute_capir_artifact, inspect_capir_artifact
+from .capir_runtime import (
+    execute_and_inspect_capir_artifact,
+    execute_capir_artifact,
+    execute_kir_program,
+    inspect_capir_artifact,
+    inspect_kir_artifact,
+)
 from .compile_result import compile_source_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
@@ -245,7 +251,7 @@ def main() -> None:
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
             compiled = compile_source_v1(frontend_source, program_source)
-            result = execute_and_inspect_capir_artifact(compiled.compile_artifact)
+            result = execute_kir_program(compiled.lower.kir)
             if args.json:
                 emit_payload(
                     {
@@ -253,7 +259,8 @@ def main() -> None:
                         "entry": args.entry,
                         "source": str(args.source),
                         "ast": compiled.parse.raw_ast,
-                        "capir": result.capir,
+                        "kir": inspect_kir_artifact(compiled.lower.kir),
+                        "capir": inspect_capir_artifact(compiled.compile_artifact),
                         "artifact": compiled.raw_compile_artifact,
                         "value": result.output,
                     }
@@ -349,6 +356,7 @@ def main() -> None:
                     "source": str(args.source),
                     "ast": compiled.parse.raw_ast,
                     "artifact": compiled.raw_compile_artifact,
+                    "kir": inspect_kir_artifact(compiled.lower.kir),
                     "capir": inspect_capir_artifact(compiled.compile_artifact),
                 }
             )

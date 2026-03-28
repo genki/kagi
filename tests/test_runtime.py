@@ -18,9 +18,11 @@ from kagi.capir_runtime import (
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
+from kagi.kir import inspect_kir_artifact, kir_program_from_print_artifact, serialize_kir_program_v0
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 import kagi.subset as subset_module
 from kagi.subset import parse_subset_program, run_subset_program
+from kagi.artifact import parse_artifact_v1
 from kagi.runtime import (
     Cell,
     KagiRuntimeError,
@@ -949,6 +951,12 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(result.capir["serialized"], 'print "hello"\nprint "world"\n')
         self.assertEqual(result.output, "hello\nworld")
 
+    def test_kir_print_program_scaffold_roundtrips(self):
+        artifact = json.dumps({"kind": "print_many", "texts": ["hello", "world"]})
+        program = kir_program_from_print_artifact(parse_artifact_v1(artifact))
+        self.assertEqual(inspect_kir_artifact(program)["ops"], [{"text": "hello"}, {"text": "world"}])
+        self.assertEqual(serialize_kir_program_v0(program), '{"kind":"kir","effect":"print","ops":[{"text":"hello"},{"text":"world"}]}')
+
     def test_compile_source_v1_returns_typed_pipeline_result(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -960,6 +968,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.compile_artifact.texts, ["hello, world!"])
         self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
+        self.assertEqual([op.text for op in compiled.lower.kir.instructions], ["hello, world!"])
         self.assertEqual(compiled.parse.surface_ast.functions[0].name, "emit_suffix")
 
     def test_compile_source_v1_uses_pipeline_entry_only(self):
@@ -1058,6 +1067,8 @@ class RuntimeTest(unittest.TestCase):
         payload = __import__("json").loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["kir"]["effect"], "print")
+        self.assertEqual(payload["kir"]["ops"], [{"text": "hello, world!"}])
         self.assertEqual(
             json.loads(payload["ast"]),
             {

@@ -124,6 +124,10 @@
   - `selfhost_bundle.py`
   - `SelfhostPipelineBundleV1`
   - pipeline bundle decode を 1 箇所へ集約
+- `kir-v0` を追加
+  - `kir.py`
+  - `kir_runtime.py`
+  - selfhost run path を print-only artifact から KIR へ載せ替える
 
 ## 非目標
 
