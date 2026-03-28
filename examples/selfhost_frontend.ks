@@ -290,12 +290,36 @@ fn lower_ast(ast) {
   return lower_program_artifact(ast);
 }
 
-fn check(source) {
-  let ast = parse(source);
-  if eq(ast, "error: expected quoted string") {
-    return ast;
+fn try_check_known(source) {
+  let simple = try_lower_single_print(source);
+  if eq(simple, "") {
+    let simple_let = try_lower_simple_let_print(source);
+    if eq(simple_let, "") {
+      let simple_fn = try_lower_simple_single_arg_fn_call(source);
+      if eq(simple_fn, "") {
+        return "";
+      } else {
+        return "ok";
+      }
+    } else {
+      return "ok";
+    }
   } else {
-    return check_ast(ast);
+    return "ok";
+  }
+}
+
+fn check(source) {
+  let known = try_check_known(source);
+  if eq(known, "") {
+    let ast = parse(source);
+    if eq(ast, "error: expected quoted string") {
+      return ast;
+    } else {
+      return check_ast(ast);
+    }
+  } else {
+    return known;
   }
 }
 
