@@ -266,35 +266,85 @@ def builtin_program_text(ast: object) -> str:
 
 
 def parse_print_program_source(text: str) -> dict | None:
+    lines = [raw.strip() for raw in text.splitlines() if raw.strip()]
+    statements, index = parse_tiny_stmt_block(lines, 0, stop_at_closing=False)
+    if statements is None or index != len(lines):
+        return None
+    if not statements:
+        return None
+    return {"kind": "program", "statements": statements}
+
+
+def parse_tiny_stmt_block(
+    lines: list[str], start: int, *, stop_at_closing: bool
+) -> tuple[list[dict] | None, int]:
     statements: list[dict] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if line == "}":
+            if stop_at_closing:
+                return statements, index + 1
+            return None, index
+        if line.startswith("} else {"):
+            if stop_at_closing:
+                return statements, index
+            return None, index
+        if line.startswith("if ") and line.endswith("{"):
+            condition_text = line[len("if "):-1].strip()
+            condition = parse_tiny_expr(condition_text)
+            if condition is None:
+                return None, index
+            then_body, next_index = parse_tiny_stmt_block(lines, index + 1, stop_at_closing=True)
+            if then_body is None or next_index > len(lines):
+                return None, index
+            else_body: list[dict] = []
+            if next_index < len(lines) and lines[next_index] == "else {":
+                else_body, next_index = parse_tiny_stmt_block(lines, next_index + 1, stop_at_closing=True)
+                if else_body is None:
+                    return None, index
+            elif next_index < len(lines) and lines[next_index].startswith("} else {"):
+                else_body, next_index = parse_tiny_stmt_block(lines, next_index + 1, stop_at_closing=True)
+                if else_body is None:
+                    return None, index
+            statements.append(
+                {
+                    "kind": "if_stmt",
+                    "condition": condition,
+                    "then_body": then_body,
+                    "else_body": else_body,
+                }
+            )
+            index = next_index
             continue
+        if line == "else {":
+            return None, index
         if line.startswith("let "):
             rest = line[len("let "):].strip()
             if "=" not in rest:
-                return None
+                return None, index
             name, expr = rest.split("=", 1)
             name = name.strip()
             if not name or not name.replace("_", "").isalnum():
-                return None
+                return None, index
             parsed_expr = parse_tiny_expr(expr.strip())
             if parsed_expr is None:
-                return None
+                return None, index
             statements.append({"kind": "let", "name": name, "expr": parsed_expr})
+            index += 1
             continue
         if line.startswith("print "):
             expr = line[len("print "):].strip()
             parsed_expr = parse_tiny_expr(expr)
             if parsed_expr is None:
-                return None
+                return None, index
             statements.append({"kind": "print", "expr": parsed_expr})
+            index += 1
             continue
-        return None
-    if not statements:
-        return None
-    return {"kind": "program", "statements": statements}
+        return None, index
+    if stop_at_closing:
+        return None, index
+    return statements, index
 
 
 def parse_tiny_expr(expr: str) -> dict | None:
@@ -417,7 +467,49 @@ def builtin_validate_program_ast(ast: object) -> str:
             if validate_tiny_expr(stmt.get("expr"), defined) != "ok":
                 return "error: invalid program ast"
             continue
+        if kind == "if_stmt":
+            if validate_tiny_expr(stmt.get("condition"), defined) != "ok":
+                return "error: invalid program ast"
+            then_body = stmt.get("then_body")
+            else_body = stmt.get("else_body")
+            if validate_tiny_body(then_body, defined) != "ok":
+                return "error: invalid program ast"
+            if validate_tiny_body(else_body, defined) != "ok":
+                return "error: invalid program ast"
+            continue
         return "error: invalid program ast"
+    return "ok"
+
+
+def validate_tiny_body(body: object, defined: set[str]) -> str:
+    if not isinstance(body, list):
+        return "error"
+    nested_defined = set(defined)
+    for stmt in body:
+        if not isinstance(stmt, dict):
+            return "error"
+        kind = stmt.get("kind")
+        if kind == "let":
+            name = stmt.get("name")
+            if not isinstance(name, str) or not name:
+                return "error"
+            if validate_tiny_expr(stmt.get("expr"), nested_defined) != "ok":
+                return "error"
+            nested_defined.add(name)
+            continue
+        if kind == "print":
+            if validate_tiny_expr(stmt.get("expr"), nested_defined) != "ok":
+                return "error"
+            continue
+        if kind == "if_stmt":
+            if validate_tiny_expr(stmt.get("condition"), nested_defined) != "ok":
+                return "error"
+            if validate_tiny_body(stmt.get("then_body"), nested_defined) != "ok":
+                return "error"
+            if validate_tiny_body(stmt.get("else_body"), nested_defined) != "ok":
+                return "error"
+            continue
+        return "error"
     return "ok"
 
 
@@ -496,24 +588,42 @@ def builtin_lower_program_artifact(ast: object) -> str:
         return "error: invalid program ast"
     env: dict[str, str | bool] = {}
     texts: list[str] = []
-    for stmt in statements:
+    if eval_tiny_body(statements, env, texts) != "ok":
+        return "error: invalid program ast"
+    return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
+
+
+def eval_tiny_body(body: object, env: dict[str, str | bool], texts: list[str]) -> str:
+    if not isinstance(body, list):
+        return "error"
+    nested_env = dict(env)
+    for stmt in body:
         if not isinstance(stmt, dict):
-            return "error: invalid program ast"
+            return "error"
         kind = stmt.get("kind")
         if kind == "let":
             name = stmt.get("name")
-            value = eval_tiny_expr(stmt.get("expr"), env)
+            value = eval_tiny_expr(stmt.get("expr"), nested_env)
             if not isinstance(name, str) or value is None:
-                return "error: invalid program ast"
-            env[name] = value
+                return "error"
+            nested_env[name] = value
             continue
-        if kind != "print":
-            return "error: invalid program ast"
-        value = eval_tiny_expr(stmt.get("expr"), env)
-        if not isinstance(value, str):
-            return "error: invalid program ast"
-        texts.append(value)
-    return json.dumps({"kind": "print_many", "texts": texts}, ensure_ascii=False, separators=(",", ":"))
+        if kind == "print":
+            value = eval_tiny_expr(stmt.get("expr"), nested_env)
+            if not isinstance(value, str):
+                return "error"
+            texts.append(value)
+            continue
+        if kind == "if_stmt":
+            condition = eval_tiny_expr(stmt.get("condition"), nested_env)
+            if not isinstance(condition, bool):
+                return "error"
+            branch = stmt.get("then_body") if condition else stmt.get("else_body")
+            if eval_tiny_body(branch, nested_env, texts) != "ok":
+                return "error"
+            continue
+        return "error"
+    return "ok"
 
 
 BUILTINS = {
