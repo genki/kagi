@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import json
 
 from .artifact import PrintArtifactV1, artifact_v1_stdout
+from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,10 @@ def kir_program_from_print_artifact(artifact: PrintArtifactV1) -> KIRProgramV0:
 
 
 def kir_program_to_print_artifact(program: KIRProgramV0) -> PrintArtifactV1:
+    if not _is_print_only_program(program):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("kir", "program is not a print-only KIR artifact")
+        )
     texts: list[str] = []
     for stmt in program.instructions:
         if isinstance(stmt, KIRPrintV0) and isinstance(stmt.expr, KIRStringV0):

@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from .artifact import PrintArtifactV1, parse_artifact_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .ir import CapIRFragment, CapIRPrint, serialize_capir_fragment
-from .kir import KIRProgramV0, inspect_kir_program as inspect_kir_program_v0, kir_program_from_print_artifact, serialize_kir_program_v0
+from .kir import (
+    KIRProgramV0,
+    inspect_kir_program as inspect_kir_program_v0,
+    kir_program_from_print_artifact,
+    kir_program_to_print_artifact,
+    serialize_kir_program_v0,
+)
 from .kir_runtime import execute_kir_program_v0
 
 
@@ -77,13 +83,7 @@ def inspect_kir_program(program: KIRProgramV0) -> dict[str, object]:
 
 
 def kir_program_to_artifact(program: KIRProgramV0) -> PrintArtifactV1:
-    return PrintArtifactV1(
-        texts=[
-            stmt.expr.value
-            for stmt in program.instructions
-            if getattr(stmt, "expr", None) is not None and hasattr(stmt.expr, "value")
-        ]
-    )
+    return kir_program_to_print_artifact(program)
 
 
 def capir_fragment_from_kir_program(program: KIRProgramV0) -> CapIRFragment:
