@@ -230,17 +230,37 @@ def builtin_trim(text: object) -> str:
     return text.strip() if isinstance(text, str) else ""
 
 
+def builtin_starts_with(text: object, prefix: object) -> bool:
+    return isinstance(text, str) and isinstance(prefix, str) and text.startswith(prefix)
+
+
+def builtin_ends_with(text: object, suffix: object) -> bool:
+    return isinstance(text, str) and isinstance(suffix, str) and text.endswith(suffix)
+
+
+def builtin_quote() -> str:
+    return '"'
+
+
 def builtin_print_ast(text: object) -> str:
     if not isinstance(text, str):
         text = str(text)
-    return json.dumps({"kind": "print", "text": text}, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        {"kind": "print", "expr": {"kind": "string", "value": text}},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def builtin_program_ast(text: object) -> str:
     if not isinstance(text, str):
         text = str(text)
     return json.dumps(
-        {"kind": "program", "statements": [{"kind": "print", "text": text}]},
+        {
+            "kind": "program",
+            "functions": [],
+            "statements": [{"kind": "print", "expr": {"kind": "string", "value": text}}],
+        },
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -261,7 +281,10 @@ def builtin_program_text(ast: object) -> str:
     stmt = statements[0]
     if not isinstance(stmt, dict) or stmt.get("kind") != "print":
         return ""
-    text = stmt.get("text")
+    expr = stmt.get("expr")
+    if not isinstance(expr, dict) or expr.get("kind") != "string":
+        return ""
+    text = expr.get("value")
     return text if isinstance(text, str) else ""
 
 
@@ -744,12 +767,15 @@ def eval_tiny_body(
 BUILTINS = {
     "eq": builtin_eq,
     "concat": builtin_concat,
+    "ends_with": builtin_ends_with,
     "extract_quoted": builtin_extract_quoted,
     "lower_program_artifact": builtin_lower_program_artifact,
     "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
     "program_ast": builtin_program_ast,
     "program_text": builtin_program_text,
+    "quote": builtin_quote,
+    "starts_with": builtin_starts_with,
     "validate_program_ast": builtin_validate_program_ast,
     "trim": builtin_trim,
 }

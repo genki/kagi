@@ -200,6 +200,24 @@ class RuntimeTest(unittest.TestCase):
         value = run_subset_program(source, entry="main", args=["world!"])
         self.assertEqual(value, "hello, world!")
 
+    def test_subset_builtins_program_ast_matches_current_shape(self):
+        source = """
+        fn main() {
+            return program_ast("hello, world!");
+        }
+        """
+        value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(
+            json.loads(value),
+            {
+                "kind": "program",
+                "functions": [],
+                "statements": [
+                    {"kind": "print", "expr": {"kind": "string", "value": "hello, world!"}},
+                ],
+            },
+        )
+
     def test_selfhost_frontend_emits_hello_world(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
