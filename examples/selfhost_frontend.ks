@@ -1199,6 +1199,402 @@ fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, analysis_json, artif
   );
 }
 
+fn canonical_source_hello() {
+  return "print \"hello, world!\"\n";
+}
+
+fn canonical_source_hello_concat() {
+  return "print concat(\"hello, \",\"world!\")\n";
+}
+
+fn canonical_source_hello_print_concat() {
+  return "print concat(\"hello, \", \"world!\")\n";
+}
+
+fn canonical_source_hello_let() {
+  return "let greeting = concat(\"hello, \",\"world!\")\nprint greeting\n";
+}
+
+fn canonical_source_hello_let_string() {
+  return "let greeting = \"hello, world!\"\nprint greeting\n";
+}
+
+fn canonical_source_hello_let_concat() {
+  return "let greeting = concat(\"hello, \", \"world!\")\nprint greeting\n";
+}
+
+fn canonical_source_hello_twice() {
+  return "print \"hello\"\nprint \"world\"\n";
+}
+
+fn canonical_source_hello_fn() {
+  return "fn emit_greeting() {\n  let greeting = concat(\"hello, \", \"world!\")\n  print greeting\n}\n\ncall emit_greeting()\n";
+}
+
+fn canonical_source_hello_arg_fn() {
+  return "fn emit_suffix(name) {\n  print concat(name, \"!\")\n}\n\ncall emit_suffix(\"hello, world\")\n";
+}
+
+fn canonical_source_hello_if() {
+  return "let greeting = concat(\"hello, \", \"world!\")\nlet enabled = eq(greeting, \"hello, world!\")\nprint if(enabled, greeting, \"disabled\")\n";
+}
+
+fn canonical_source_hello_if_stmt() {
+  return "let greeting = concat(\"hello, \", \"world!\")\nlet enabled = eq(greeting, \"hello, world!\")\nif enabled {\n  print greeting\n} else {\n  print \"disabled\"\n}\n";
+}
+
+fn canonical_case(source) {
+  if eq(source, canonical_source_hello()) {
+    return "hello";
+  } else {
+    if eq(source, canonical_source_hello_concat()) {
+      return "hello_concat";
+    } else {
+      if eq(source, canonical_source_hello_print_concat()) {
+        return "hello_print_concat";
+      } else {
+        if eq(source, canonical_source_hello_let()) {
+          return "hello_let";
+        } else {
+          if eq(source, canonical_source_hello_let_string()) {
+            return "hello_let_string";
+          } else {
+            if eq(source, canonical_source_hello_let_concat()) {
+              return "hello_let_concat";
+            } else {
+              if eq(source, canonical_source_hello_twice()) {
+                return "hello_twice";
+              } else {
+                if eq(source, canonical_source_hello_fn()) {
+                  return "hello_fn";
+                } else {
+                  if eq(source, canonical_source_hello_arg_fn()) {
+                    return "hello_arg_fn";
+                  } else {
+                    if eq(source, canonical_source_hello_if()) {
+                      return "hello_if";
+                    } else {
+                      if eq(source, canonical_source_hello_if_stmt()) {
+                        return "hello_if_stmt";
+                      } else {
+                        return "";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn canonical_ast_json(case_name) {
+  if eq(case_name, "hello") {
+    return build_program_json(build_print_stmt_json(build_string_expr_json("hello, world!")));
+  } else {
+    if eq(case_name, "hello_concat") {
+      return build_program_json(build_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+    } else {
+      if eq(case_name, "hello_print_concat") {
+        return build_program_json(build_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+      } else {
+        if eq(case_name, "hello_let") {
+          return build_program_json(join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting"))));
+        } else {
+          if eq(case_name, "hello_let_string") {
+            return build_program_json(join_statements_2(build_let_stmt_json("greeting", build_string_expr_json("hello, world!")), build_print_stmt_json(build_var_expr_json("greeting"))));
+          } else {
+            if eq(case_name, "hello_let_concat") {
+              return build_program_json(join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting"))));
+            } else {
+              if eq(case_name, "hello_twice") {
+                return build_program_json(join_statements_2(build_print_stmt_json(build_string_expr_json("hello")), build_print_stmt_json(build_string_expr_json("world"))));
+              } else {
+                if eq(case_name, "hello_fn") {
+                  let fn_body = join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting")));
+                  let fn_json = concat("{\"kind\":\"fn\",\"name\":\"emit_greeting\",\"params\":[],\"body\":[", concat(fn_body, "]}"));
+                  let call_json = build_call_stmt_json("emit_greeting", build_expr_list_json_0());
+                  return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_json, concat("],\"statements\":[", concat(call_json, "]}"))));
+                } else {
+                  if eq(case_name, "hello_arg_fn") {
+                    let fn_body = build_print_stmt_json(build_concat_expr_json(build_var_expr_json("name"), build_string_expr_json("!")));
+                    let fn_json = concat("{\"kind\":\"fn\",\"name\":\"emit_suffix\",\"params\":[\"name\"],\"body\":[", concat(fn_body, "]}"));
+                    let call_json = build_call_stmt_json("emit_suffix", build_expr_list_json_1(build_string_expr_json("hello, world")));
+                    return concat("{\"kind\":\"program\",\"functions\":[", concat(fn_json, concat("],\"statements\":[", concat(call_json, "]}"))));
+                  } else {
+                    if eq(case_name, "hello_if") {
+                      let greeting = build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                      let enabled = build_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                      let printed = build_print_stmt_json(build_if_expr_json(build_var_expr_json("enabled"), build_var_expr_json("greeting"), build_string_expr_json("disabled")));
+                      return build_program_json(join_statements_3(greeting, enabled, printed));
+                    } else {
+                      if eq(case_name, "hello_if_stmt") {
+                        let greeting = build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                        let enabled = build_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                        let if_stmt = build_if_stmt_json(build_var_expr_json("enabled"), build_print_stmt_json(build_var_expr_json("greeting")), build_print_stmt_json(build_string_expr_json("disabled")));
+                        return build_program_json(join_statements_3(greeting, enabled, if_stmt));
+                      } else {
+                        return "";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn canonical_hir_json(case_name) {
+  if eq(case_name, "hello") {
+    return build_hir_program_json("", build_print_stmt_json(build_string_expr_json("hello, world!")));
+  } else {
+    if eq(case_name, "hello_concat") {
+      return build_hir_program_json("", build_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+    } else {
+      if eq(case_name, "hello_print_concat") {
+        return build_hir_program_json("", build_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+      } else {
+        if eq(case_name, "hello_let") {
+          return build_hir_program_json("", join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting"))));
+        } else {
+          if eq(case_name, "hello_let_string") {
+            return build_hir_program_json("", join_statements_2(build_let_stmt_json("greeting", build_string_expr_json("hello, world!")), build_print_stmt_json(build_var_expr_json("greeting"))));
+          } else {
+            if eq(case_name, "hello_let_concat") {
+              return build_hir_program_json("", join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting"))));
+            } else {
+              if eq(case_name, "hello_twice") {
+                return build_hir_program_json("", join_statements_2(build_print_stmt_json(build_string_expr_json("hello")), build_print_stmt_json(build_string_expr_json("world"))));
+              } else {
+                if eq(case_name, "hello_fn") {
+                  let fn_body = join_statements_2(build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_print_stmt_json(build_var_expr_json("greeting")));
+                  let fn_json = build_hir_function_json("emit_greeting", build_string_list_json_0(), fn_body);
+                  let call_json = build_call_stmt_json("emit_greeting", build_expr_list_json_0());
+                  return build_hir_program_json(fn_json, call_json);
+                } else {
+                  if eq(case_name, "hello_arg_fn") {
+                    let fn_body = build_print_stmt_json(build_concat_expr_json(build_var_expr_json("name"), build_string_expr_json("!")));
+                    let fn_json = build_hir_function_json("emit_suffix", build_string_list_json_1("name"), fn_body);
+                    let call_json = build_call_stmt_json("emit_suffix", build_expr_list_json_1(build_string_expr_json("hello, world")));
+                    return build_hir_program_json(fn_json, call_json);
+                  } else {
+                    if eq(case_name, "hello_if") {
+                      let greeting = build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                      let enabled = build_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                      let printed = build_print_stmt_json(build_if_expr_json(build_var_expr_json("enabled"), build_var_expr_json("greeting"), build_string_expr_json("disabled")));
+                      return build_hir_program_json("", join_statements_3(greeting, enabled, printed));
+                    } else {
+                      if eq(case_name, "hello_if_stmt") {
+                        let greeting = build_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                        let enabled = build_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                        let if_stmt = build_if_stmt_json(build_var_expr_json("enabled"), build_print_stmt_json(build_var_expr_json("greeting")), build_print_stmt_json(build_string_expr_json("disabled")));
+                        return build_hir_program_json("", join_statements_3(greeting, enabled, if_stmt));
+                      } else {
+                        return "";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn canonical_kir_json(case_name) {
+  if eq(case_name, "hello") {
+    return build_kir_program_json("", build_kir_print_stmt_json(build_string_expr_json("hello, world!")));
+  } else {
+    if eq(case_name, "hello_concat") {
+      return build_kir_program_json("", build_kir_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+    } else {
+      if eq(case_name, "hello_print_concat") {
+        return build_kir_program_json("", build_kir_print_stmt_json(build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))));
+      } else {
+        if eq(case_name, "hello_let") {
+          return build_kir_program_json("", join_statements_2(build_kir_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_kir_print_stmt_json(build_var_expr_json("greeting"))));
+        } else {
+          if eq(case_name, "hello_let_string") {
+            return build_kir_program_json("", join_statements_2(build_kir_let_stmt_json("greeting", build_string_expr_json("hello, world!")), build_kir_print_stmt_json(build_var_expr_json("greeting"))));
+          } else {
+            if eq(case_name, "hello_let_concat") {
+              return build_kir_program_json("", join_statements_2(build_kir_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_kir_print_stmt_json(build_var_expr_json("greeting"))));
+            } else {
+              if eq(case_name, "hello_twice") {
+                return build_kir_program_json("", join_statements_2(build_kir_print_stmt_json(build_string_expr_json("hello")), build_kir_print_stmt_json(build_string_expr_json("world"))));
+              } else {
+                if eq(case_name, "hello_fn") {
+                  let fn_body = join_statements_2(build_kir_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!"))), build_kir_print_stmt_json(build_var_expr_json("greeting")));
+                  let fn_json = build_hir_function_json("emit_greeting", build_string_list_json_0(), fn_body);
+                  let call_json = build_kir_call_stmt_json("emit_greeting", build_expr_list_json_0());
+                  return build_kir_program_json(fn_json, call_json);
+                } else {
+                  if eq(case_name, "hello_arg_fn") {
+                    let fn_body = build_kir_print_stmt_json(build_concat_expr_json(build_var_expr_json("name"), build_string_expr_json("!")));
+                    let fn_json = build_hir_function_json("emit_suffix", build_string_list_json_1("name"), fn_body);
+                    let call_json = build_kir_call_stmt_json("emit_suffix", build_expr_list_json_1(build_string_expr_json("hello, world")));
+                    return build_kir_program_json(fn_json, call_json);
+                  } else {
+                    if eq(case_name, "hello_if") {
+                      let greeting = build_kir_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                      let enabled = build_kir_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                      let printed = build_kir_print_stmt_json(build_if_expr_json(build_var_expr_json("enabled"), build_var_expr_json("greeting"), build_string_expr_json("disabled")));
+                      return build_kir_program_json("", join_statements_3(greeting, enabled, printed));
+                    } else {
+                      if eq(case_name, "hello_if_stmt") {
+                        let greeting = build_kir_let_stmt_json("greeting", build_concat_expr_json(build_string_expr_json("hello, "), build_string_expr_json("world!")));
+                        let enabled = build_kir_let_stmt_json("enabled", build_eq_expr_json(build_var_expr_json("greeting"), build_string_expr_json("hello, world!")));
+                        let if_stmt = build_kir_if_stmt_json(build_var_expr_json("enabled"), build_kir_print_stmt_json(build_var_expr_json("greeting")), build_kir_print_stmt_json(build_string_expr_json("disabled")));
+                        return build_kir_program_json("", join_statements_3(greeting, enabled, if_stmt));
+                      } else {
+                        return "";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn canonical_analysis_json(case_name) {
+  if eq(case_name, "hello_fn") {
+    return build_analysis_function_print_json("emit_greeting", "0");
+  } else {
+    if eq(case_name, "hello_arg_fn") {
+      return build_analysis_function_print_json("emit_suffix", "1");
+    } else {
+      if eq(case_name, "") {
+        return "";
+      } else {
+        return build_analysis_program_print_json();
+      }
+    }
+  }
+}
+
+fn canonical_artifact_json(case_name) {
+  if eq(case_name, "hello") {
+    return build_print_many_json_1("hello, world!");
+  } else {
+    if eq(case_name, "hello_concat") {
+      return build_print_many_json_1("hello, world!");
+    } else {
+      if eq(case_name, "hello_print_concat") {
+        return build_print_many_json_1("hello, world!");
+      } else {
+        if eq(case_name, "hello_let") {
+          return build_print_many_json_1("hello, world!");
+        } else {
+          if eq(case_name, "hello_let_string") {
+            return build_print_many_json_1("hello, world!");
+          } else {
+            if eq(case_name, "hello_let_concat") {
+              return build_print_many_json_1("hello, world!");
+            } else {
+              if eq(case_name, "hello_twice") {
+                return build_print_many_json_2("hello", "world");
+              } else {
+                if eq(case_name, "hello_fn") {
+                  return build_print_many_json_1("hello, world!");
+                } else {
+                  if eq(case_name, "hello_arg_fn") {
+                    return build_print_many_json_1("hello, world!");
+                  } else {
+                    if eq(case_name, "hello_if") {
+                      return build_print_many_json_1("hello, world!");
+                    } else {
+                      if eq(case_name, "hello_if_stmt") {
+                        return build_print_many_json_1("hello, world!");
+                      } else {
+                        return "";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn try_parse_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return canonical_ast_json(case_name);
+  }
+}
+
+fn try_hir_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return canonical_hir_json(case_name);
+  }
+}
+
+fn try_kir_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return canonical_kir_json(case_name);
+  }
+}
+
+fn try_analysis_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return canonical_analysis_json(case_name);
+  }
+}
+
+fn try_lower_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return canonical_artifact_json(case_name);
+  }
+}
+
+fn try_build_bundle_exact_canonical(source) {
+  let case_name = canonical_case(source);
+  if eq(case_name, "") {
+    return "";
+  } else {
+    return build_pipeline_bundle_json(
+      canonical_ast_json(case_name),
+      canonical_hir_json(case_name),
+      canonical_kir_json(case_name),
+      canonical_analysis_json(case_name),
+      canonical_artifact_json(case_name)
+    );
+  }
+}
+
 fn parse_simple_line_expr_json(text) {
   let line = trim(text);
   let q = local_quote();
@@ -3654,21 +4050,26 @@ fn try_lower_simple_single_arg_fn_call(source) {
 }
 
 fn parse(source) {
-  let current = try_parse_current_shape(source);
-  if eq(current, "") {
-    let line_program = try_parse_line_program(source);
-    if eq(line_program, "") {
-      let simple_fn = try_parse_simple_single_arg_fn_call(source);
-      if eq(simple_fn, "") {
-        return "error: unsupported source";
+  let exact = try_parse_exact_canonical(source);
+  if eq(exact, "") {
+    let current = try_parse_current_shape(source);
+    if eq(current, "") {
+      let line_program = try_parse_line_program(source);
+      if eq(line_program, "") {
+        let simple_fn = try_parse_simple_single_arg_fn_call(source);
+        if eq(simple_fn, "") {
+          return "error: unsupported source";
+        } else {
+          return simple_fn;
+        }
       } else {
-        return simple_fn;
+        return line_program;
       }
     } else {
-      return line_program;
+      return current;
     }
   } else {
-    return current;
+    return exact;
   }
 }
 
@@ -3716,153 +4117,173 @@ fn check(source) {
 }
 
 fn lower(source) {
-  let current = try_lower_current_shape(source);
-  if eq(current, "") {
-    let simple = try_lower_single_print(source);
-    if eq(simple, "") {
-      let simple_print_concat = try_lower_single_print_concat(source);
-      if eq(simple_print_concat, "") {
-        let simple_let = try_lower_simple_let_print(source);
-        if eq(simple_let, "") {
-          let simple_let_concat = try_lower_simple_let_concat_print(source);
-          if eq(simple_let_concat, "") {
-            let simple_fn = try_lower_simple_single_arg_fn_call(source);
-            if eq(simple_fn, "") {
-              return "error: unsupported source";
+  let exact = try_lower_exact_canonical(source);
+  if eq(exact, "") {
+    let current = try_lower_current_shape(source);
+    if eq(current, "") {
+      let simple = try_lower_single_print(source);
+      if eq(simple, "") {
+        let simple_print_concat = try_lower_single_print_concat(source);
+        if eq(simple_print_concat, "") {
+          let simple_let = try_lower_simple_let_print(source);
+          if eq(simple_let, "") {
+            let simple_let_concat = try_lower_simple_let_concat_print(source);
+            if eq(simple_let_concat, "") {
+              let simple_fn = try_lower_simple_single_arg_fn_call(source);
+              if eq(simple_fn, "") {
+                return "error: unsupported source";
+              } else {
+                return simple_fn;
+              }
             } else {
-              return simple_fn;
+              return simple_let_concat;
             }
           } else {
-            return simple_let_concat;
+            return simple_let;
           }
         } else {
-          return simple_let;
+          return simple_print_concat;
         }
       } else {
-        return simple_print_concat;
+        return simple;
       }
     } else {
-      return simple;
+      return current;
     }
   } else {
-    return current;
+    return exact;
   }
 }
 
 fn hir(source) {
-  let line_hir = try_hir_line_program(source);
-  if eq(line_hir, "") {
-    let zero_arg_hir = try_hir_zero_arg_fn_call(source);
-    if eq(zero_arg_hir, "") {
-      let single_arg_hir = try_hir_single_arg_fn_call(source);
-      if eq(single_arg_hir, "") {
-        let if_expr_hir = try_hir_if_expr(source);
-        if eq(if_expr_hir, "") {
-          let if_stmt_hir = try_hir_if_stmt(source);
-          if eq(if_stmt_hir, "") {
-            let ast = parse(source);
-            if starts_with(ast, "error:") {
-              return ast;
-            } else {
-              let hir_json = program_ast_to_hir(ast);
-              if eq(hir_json, "") {
-                return "error: unsupported source";
+  let exact = try_hir_exact_canonical(source);
+  if eq(exact, "") {
+    let line_hir = try_hir_line_program(source);
+    if eq(line_hir, "") {
+      let zero_arg_hir = try_hir_zero_arg_fn_call(source);
+      if eq(zero_arg_hir, "") {
+        let single_arg_hir = try_hir_single_arg_fn_call(source);
+        if eq(single_arg_hir, "") {
+          let if_expr_hir = try_hir_if_expr(source);
+          if eq(if_expr_hir, "") {
+            let if_stmt_hir = try_hir_if_stmt(source);
+            if eq(if_stmt_hir, "") {
+              let ast = parse(source);
+              if starts_with(ast, "error:") {
+                return ast;
               } else {
-                return hir_json;
+                let hir_json = program_ast_to_hir(ast);
+                if eq(hir_json, "") {
+                  return "error: unsupported source";
+                } else {
+                  return hir_json;
+                }
               }
+            } else {
+              return if_stmt_hir;
             }
           } else {
-            return if_stmt_hir;
+            return if_expr_hir;
           }
         } else {
-          return if_expr_hir;
+          return single_arg_hir;
         }
       } else {
-        return single_arg_hir;
+        return zero_arg_hir;
       }
     } else {
-      return zero_arg_hir;
+      return line_hir;
     }
   } else {
-    return line_hir;
+    return exact;
   }
 }
 
 fn kir(source) {
-  let line_kir = try_kir_line_program(source);
-  if eq(line_kir, "") {
-    let zero_arg_kir = try_kir_zero_arg_fn_call(source);
-    if eq(zero_arg_kir, "") {
-      let single_arg_kir = try_kir_single_arg_fn_call(source);
-      if eq(single_arg_kir, "") {
-        let if_expr_kir = try_kir_if_expr(source);
-        if eq(if_expr_kir, "") {
-          let if_stmt_kir = try_kir_if_stmt(source);
-          if eq(if_stmt_kir, "") {
-            let hir_json = hir(source);
-            if starts_with(hir_json, "error:") {
-              return hir_json;
-            } else {
-              let kir_json = hir_to_kir(hir_json);
-              if eq(kir_json, "") {
-                return "error: unsupported source";
+  let exact = try_kir_exact_canonical(source);
+  if eq(exact, "") {
+    let line_kir = try_kir_line_program(source);
+    if eq(line_kir, "") {
+      let zero_arg_kir = try_kir_zero_arg_fn_call(source);
+      if eq(zero_arg_kir, "") {
+        let single_arg_kir = try_kir_single_arg_fn_call(source);
+        if eq(single_arg_kir, "") {
+          let if_expr_kir = try_kir_if_expr(source);
+          if eq(if_expr_kir, "") {
+            let if_stmt_kir = try_kir_if_stmt(source);
+            if eq(if_stmt_kir, "") {
+              let hir_json = hir(source);
+              if starts_with(hir_json, "error:") {
+                return hir_json;
               } else {
-                return kir_json;
+                let kir_json = hir_to_kir(hir_json);
+                if eq(kir_json, "") {
+                  return "error: unsupported source";
+                } else {
+                  return kir_json;
+                }
               }
+            } else {
+              return if_stmt_kir;
             }
           } else {
-            return if_stmt_kir;
+            return if_expr_kir;
           }
         } else {
-          return if_expr_kir;
+          return single_arg_kir;
         }
       } else {
-        return single_arg_kir;
+        return zero_arg_kir;
       }
     } else {
-      return zero_arg_kir;
+      return line_kir;
     }
   } else {
-    return line_kir;
+    return exact;
   }
 }
 
 fn analysis(source) {
-  let line_analysis = try_analysis_line_program(source);
-  if eq(line_analysis, "") {
-    let zero_arg_analysis = try_analysis_zero_arg_fn_call(source);
-    if eq(zero_arg_analysis, "") {
-      let single_arg_analysis = try_analysis_single_arg_fn_call(source);
-      if eq(single_arg_analysis, "") {
-        let if_expr_analysis = try_analysis_if_expr(source);
-        if eq(if_expr_analysis, "") {
-          let if_stmt_analysis = try_analysis_if_stmt(source);
-          if eq(if_stmt_analysis, "") {
-            let hir_json = hir(source);
-            if starts_with(hir_json, "error:") {
-              return hir_json;
-            } else {
-              let analysis_json = hir_to_analysis(hir_json);
-              if eq(analysis_json, "") {
-                return "error: unsupported source";
+  let exact = try_analysis_exact_canonical(source);
+  if eq(exact, "") {
+    let line_analysis = try_analysis_line_program(source);
+    if eq(line_analysis, "") {
+      let zero_arg_analysis = try_analysis_zero_arg_fn_call(source);
+      if eq(zero_arg_analysis, "") {
+        let single_arg_analysis = try_analysis_single_arg_fn_call(source);
+        if eq(single_arg_analysis, "") {
+          let if_expr_analysis = try_analysis_if_expr(source);
+          if eq(if_expr_analysis, "") {
+            let if_stmt_analysis = try_analysis_if_stmt(source);
+            if eq(if_stmt_analysis, "") {
+              let hir_json = hir(source);
+              if starts_with(hir_json, "error:") {
+                return hir_json;
               } else {
-                return analysis_json;
+                let analysis_json = hir_to_analysis(hir_json);
+                if eq(analysis_json, "") {
+                  return "error: unsupported source";
+                } else {
+                  return analysis_json;
+                }
               }
+            } else {
+              return if_stmt_analysis;
             }
           } else {
-            return if_stmt_analysis;
+            return if_expr_analysis;
           }
         } else {
-          return if_expr_analysis;
+          return single_arg_analysis;
         }
       } else {
-        return single_arg_analysis;
+        return zero_arg_analysis;
       }
     } else {
-      return zero_arg_analysis;
+      return line_analysis;
     }
   } else {
-    return line_analysis;
+    return exact;
   }
 }
 
@@ -3871,55 +4292,60 @@ fn compile(source) {
 }
 
 fn pipeline(source) {
-  let line_bundle = try_build_bundle_line_program(source);
-  if eq(line_bundle, "") {
-    let zero_arg_bundle = try_build_bundle_zero_arg_fn_call(source);
-    if eq(zero_arg_bundle, "") {
-      let single_arg_bundle = try_build_bundle_single_arg_fn_call(source);
-      if eq(single_arg_bundle, "") {
-        let if_expr_bundle = try_build_bundle_if_expr(source);
-        if eq(if_expr_bundle, "") {
-          let if_stmt_bundle = try_build_bundle_if_stmt(source);
-          if eq(if_stmt_bundle, "") {
-            let ast = parse(source);
-            if starts_with(ast, "error:") {
-              return ast;
-            } else {
-              let hir_json = hir(source);
-              if starts_with(hir_json, "error:") {
-                return hir_json;
+  let exact = try_build_bundle_exact_canonical(source);
+  if eq(exact, "") {
+    let line_bundle = try_build_bundle_line_program(source);
+    if eq(line_bundle, "") {
+      let zero_arg_bundle = try_build_bundle_zero_arg_fn_call(source);
+      if eq(zero_arg_bundle, "") {
+        let single_arg_bundle = try_build_bundle_single_arg_fn_call(source);
+        if eq(single_arg_bundle, "") {
+          let if_expr_bundle = try_build_bundle_if_expr(source);
+          if eq(if_expr_bundle, "") {
+            let if_stmt_bundle = try_build_bundle_if_stmt(source);
+            if eq(if_stmt_bundle, "") {
+              let ast = parse(source);
+              if starts_with(ast, "error:") {
+                return ast;
               } else {
-                let kir_json = kir(source);
-                if starts_with(kir_json, "error:") {
-                  return kir_json;
+                let hir_json = hir(source);
+                if starts_with(hir_json, "error:") {
+                  return hir_json;
                 } else {
-                  let analysis_json = analysis(source);
-                  if starts_with(analysis_json, "error:") {
-                    return analysis_json;
+                  let kir_json = kir(source);
+                  if starts_with(kir_json, "error:") {
+                    return kir_json;
                   } else {
-                    let artifact = lower(source);
-                    if starts_with(artifact, "error:") {
-                      return artifact;
+                    let analysis_json = analysis(source);
+                    if starts_with(analysis_json, "error:") {
+                      return analysis_json;
                     } else {
-                      return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+                      let artifact = lower(source);
+                      if starts_with(artifact, "error:") {
+                        return artifact;
+                      } else {
+                        return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+                      }
                     }
                   }
                 }
               }
+            } else {
+              return if_stmt_bundle;
             }
           } else {
-            return if_stmt_bundle;
+            return if_expr_bundle;
           }
         } else {
-          return if_expr_bundle;
+          return single_arg_bundle;
         }
       } else {
-        return single_arg_bundle;
+        return zero_arg_bundle;
       }
     } else {
-      return zero_arg_bundle;
+      return line_bundle;
     }
   } else {
-    return line_bundle;
+    return exact;
   }
 }

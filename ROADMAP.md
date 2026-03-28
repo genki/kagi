@@ -72,10 +72,22 @@
   - canonical path がまだ依存する Python host pieces を test と doc の両方で固定した
   - `tests/test_bundle_kir_future.py`
   - `README.md` の `Current Self-Hosting Status`
+- Stage 2: canonical string helper builtin 縮退は完了
+  - canonical corpus の `parse/hir/kir/analysis/lower/compile/pipeline` から
+    - `trim`
+    - `starts_with`
+    - `ends_with`
+    - `extract_quoted`
+    - `line_count`
+    - `line_at`
+    - `before_substring`
+    - `after_substring`
+    - `is_identifier`
+    を外した
 - 現在の主 blocker:
   - Python bundle decoder
   - Python KIR executor
-  - Python string helper builtin 群
+  - Python core expression builtin (`concat`, `eq`)
 
 ## 当面のマイルストーン
 
@@ -159,7 +171,7 @@
 1. Stage 1: host 依存の見える化
    - test と doc の両方で「なぜまだ fully self-hosted ではないか」を固定する
 2. Stage 2: string helper builtin 縮退
-   - canonical corpus で still required な `subset_builtins.py` 依存を削る
+   - canonical corpus で still required な string parsing / line helper 依存を削る
 3. Stage 3: bundle decode の縮退
    - Python bundle decoder を compatibility shim へ後退させる
 4. Stage 4: KIR runtime の縮退

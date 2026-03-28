@@ -92,24 +92,35 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertIn('"kind":"pipeline_bundle"', raw_bundle)
         self.assertEqual(compiled.metadata.frontend_entry, "pipeline")
 
-    def test_compile_source_v1_canonical_frontend_still_uses_python_string_helpers(self):
+    def test_compile_source_v1_canonical_frontend_does_not_call_python_string_helpers(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
-        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
         helper_names = (
             "trim",
             "starts_with",
+            "ends_with",
             "extract_quoted",
             "line_count",
             "line_at",
             "before_substring",
             "after_substring",
             "is_identifier",
-            "concat",
-            "eq",
         )
-        helper_spies = {
-            name: Mock(wraps=selfhost_runtime.SUBSET_KIR_BUILTINS[name])
+        cases = {
+            "hello.ksrc": "hello, world!",
+            "hello_concat.ksrc": "hello, world!",
+            "hello_let.ksrc": "hello, world!",
+            "hello_let_string.ksrc": "hello, world!",
+            "hello_let_concat.ksrc": "hello, world!",
+            "hello_twice.ksrc": "hello\nworld",
+            "hello_fn.ksrc": "hello, world!",
+            "hello_arg_fn.ksrc": "hello, world!",
+            "hello_if.ksrc": "hello, world!",
+            "hello_if_stmt.ksrc": "hello, world!",
+            "hello_print_concat.ksrc": "hello, world!",
+        }
+        forbidden_helpers = {
+            name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical compile path"))
             for name in helper_names
         }
 
@@ -118,18 +129,73 @@ class BundleKirFutureTest(unittest.TestCase):
             "SUBSET_KIR_BUILTINS",
             {
                 **selfhost_runtime.SUBSET_KIR_BUILTINS,
-                **helper_spies,
+                **forbidden_helpers,
             },
         ):
-            compiled = compile_source_v1(frontend_source, source)
+            for filename, expected_stdout in cases.items():
+                with self.subTest(case=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    compiled = compile_source_v1(frontend_source, source)
+                    self.assertEqual(compiled.stdout, expected_stdout)
 
-        self.assertEqual(compiled.stdout, "hello, world!")
-        for name, spy in helper_spies.items():
-            self.assertGreater(
-                spy.call_count,
-                0,
-                f"{name} is still part of the canonical compile path and blocks a fully self-hosted claim",
-            )
+        for name, spy in forbidden_helpers.items():
+            self.assertEqual(spy.call_count, 0, name)
+
+    def test_canonical_frontend_entries_do_not_call_python_string_helpers(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        helper_names = (
+            "trim",
+            "starts_with",
+            "ends_with",
+            "extract_quoted",
+            "line_count",
+            "line_at",
+            "before_substring",
+            "after_substring",
+            "is_identifier",
+        )
+        entries = ("parse", "hir", "kir", "analysis", "lower", "compile", "pipeline")
+        cases = (
+            "hello.ksrc",
+            "hello_concat.ksrc",
+            "hello_let.ksrc",
+            "hello_let_string.ksrc",
+            "hello_let_concat.ksrc",
+            "hello_twice.ksrc",
+            "hello_fn.ksrc",
+            "hello_arg_fn.ksrc",
+            "hello_if.ksrc",
+            "hello_if_stmt.ksrc",
+            "hello_print_concat.ksrc",
+        )
+
+        for entry in entries:
+            for filename in cases:
+                with self.subTest(entry=entry, case=filename):
+                    source = (root / "examples" / filename).read_text(encoding="utf-8")
+                    forbidden_helpers = {
+                        name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical {entry} path"))
+                        for name in helper_names
+                    }
+                    with patch.object(
+                        selfhost_runtime,
+                        "SUBSET_KIR_BUILTINS",
+                        {
+                            **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                            **forbidden_helpers,
+                        },
+                    ):
+                        value = selfhost_runtime.execute_selfhost_frontend_entry_v1(
+                            frontend_source,
+                            entry=entry,
+                            args=[source],
+                        )
+
+                    self.assertIsInstance(value, str)
+                    self.assertFalse(value.startswith("error:"))
+                    for name, spy in forbidden_helpers.items():
+                        self.assertEqual(spy.call_count, 0, f"{entry}:{filename}:{name}")
 
     def test_compile_source_v1_canonical_frontend_does_not_call_python_bootstrap_builtins(self):
         root = Path(__file__).resolve().parents[1]
