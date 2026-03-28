@@ -18,6 +18,7 @@ from .runtime import (
     export_owner,
     well_formed,
 )
+from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 from .surface_ast import SurfaceFunctionV1, SurfaceProgramV1
 from .subset import FunctionDef, SubsetProgram, parse_subset_program, run_subset_program
 from .typecheck import TypecheckedProgramV1, typecheck_program_v1
@@ -47,6 +48,7 @@ __all__ = [
     "PrintArtifactV1",
     "ProgramIR",
     "ResolvedProgramV1",
+    "SelfhostPipelineBundleV1",
     "SurfaceFunctionV1",
     "SurfaceProgramV1",
     "SubsetProgram",
@@ -67,11 +69,13 @@ __all__ = [
     "parse_artifact_v1",
     "parse_bootstrap_program",
     "parse_core_program",
+    "parse_selfhost_pipeline_bundle_v1",
     "parse_subset_program",
     "resolve_hir_program_v1",
     "run_subset_program",
     "serialize_program_ir",
     "serialize_capir_fragment",
+    "selfhost_pipeline_bundle_v1_to_json",
     "typecheck_program_v1",
     "well_formed",
 ]

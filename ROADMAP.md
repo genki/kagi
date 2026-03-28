@@ -120,6 +120,10 @@
 - `front-half compile-once` を追加
   - `selfhost_frontend.ks` の `pipeline(source)` が parse/lower を 1 回で束ねる
   - `compile_source_v1(...)` は pipeline bundle を 1 回読む
+- `typed-selfhost-bundle-abi` を追加
+  - `selfhost_bundle.py`
+  - `SelfhostPipelineBundleV1`
+  - pipeline bundle decode を 1 箇所へ集約
 
 ## 非目標
 

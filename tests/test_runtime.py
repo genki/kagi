@@ -18,6 +18,7 @@ from kagi.capir_runtime import (
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
+from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
 import kagi.subset as subset_module
 from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
@@ -982,6 +983,48 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(calls, ["pipeline"])
         self.assertEqual(compiled.stdout, "hello")
         self.assertEqual(compiled.lower.artifact.texts, ["hello"])
+
+    def test_parse_selfhost_pipeline_bundle_v1_returns_typed_bundle(self):
+        bundle = parse_selfhost_pipeline_bundle_v1(
+            '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+        )
+        self.assertEqual(bundle.raw_check, "ok")
+        self.assertEqual(bundle.surface_ast.statements[0].expr.value, "hello")
+        self.assertEqual(bundle.artifact.texts, ["hello"])
+        self.assertEqual(bundle.compile_artifact.texts, ["hello"])
+
+    def test_parse_selfhost_pipeline_bundle_v1_rejects_invalid_kind(self):
+        with self.assertRaises(DiagnosticError):
+            parse_selfhost_pipeline_bundle_v1('{"kind":"other"}')
+
+    def test_parse_selfhost_pipeline_bundle_v1_rejects_missing_ast(self):
+        with self.assertRaises(DiagnosticError):
+            parse_selfhost_pipeline_bundle_v1(
+                '{"kind":"pipeline_bundle","check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+            )
+
+    def test_parse_selfhost_pipeline_bundle_v1_rejects_missing_artifact(self):
+        with self.assertRaises(DiagnosticError):
+            parse_selfhost_pipeline_bundle_v1(
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"check":"ok","compile":{"kind":"print_many","texts":["hello"]}}'
+            )
+
+    def test_parse_selfhost_pipeline_bundle_v1_rejects_non_ok_check(self):
+        with self.assertRaises(DiagnosticError):
+            parse_selfhost_pipeline_bundle_v1(
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"check":"error","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+            )
+
+    def test_parse_selfhost_pipeline_bundle_v1_rejects_mismatched_compile(self):
+        with self.assertRaises(DiagnosticError):
+            parse_selfhost_pipeline_bundle_v1(
+                '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["world"]}}'
+            )
+
+    def test_selfhost_pipeline_bundle_v1_to_json_roundtrips(self):
+        raw = '{"kind":"pipeline_bundle","ast":{"kind":"program","functions":[],"statements":[{"kind":"print","expr":{"kind":"string","value":"hello"}}]},"check":"ok","artifact":{"kind":"print_many","texts":["hello"]},"compile":{"kind":"print_many","texts":["hello"]}}'
+        bundle = parse_selfhost_pipeline_bundle_v1(raw)
+        self.assertEqual(json.loads(selfhost_pipeline_bundle_v1_to_json(bundle)), json.loads(raw))
 
     def test_package_exports_artifact_abi_helpers(self):
         self.assertTrue(hasattr(kagi, "execute_capir_artifact"))
