@@ -12,8 +12,12 @@ BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
 
 
 def execute_kir_entry_v0(program, entry, args, *, builtins=None):
+    from .capir_runtime import execute_kir_entry_fast_v0
     from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
 
+    fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins)
+    if fast is not None:
+        return fast
     return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins)
 
 

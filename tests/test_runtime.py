@@ -11,6 +11,7 @@ from unittest.mock import patch
 import kagi
 import kagi.cli as cli_module
 import kagi.kir_runtime as kir_runtime_module
+import kagi.selfhost_runtime as selfhost_runtime_module
 from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
@@ -268,6 +269,25 @@ class RuntimeTest(unittest.TestCase):
             actual = run_subset_program_via_kir(source, entry="main", args=["world!"])
         self.assertEqual(actual, "hello, world!")
 
+    def test_subset_program_via_kir_does_not_call_python_kir_entry_runtime_for_builtin_free_function_path(self):
+        source = """
+        fn suffix(name) {
+            return concat(name, "!");
+        }
+
+        fn main(name) {
+            let greeting = suffix(name);
+            if eq(greeting, "hello!") {
+                return greeting;
+            } else {
+                return "no";
+            }
+        }
+        """
+        with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("subset KIR entry should not use python kir runtime")):
+            actual = run_subset_program_via_kir(source, entry="main", args=["hello"])
+        self.assertEqual(actual, "hello!")
+
     def test_selfhost_pipeline_via_kir_matches_interpreter(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -277,6 +297,24 @@ class RuntimeTest(unittest.TestCase):
         actual = run_subset_program_via_kir(frontend, entry="pipeline", args=[source])
 
         self.assertEqual(json.loads(actual), json.loads(expected))
+
+    def test_selfhost_runtime_execute_kir_entry_uses_local_fast_path_for_builtin_free_program(self):
+        program = KIRProgramV0(
+            instructions=[],
+            functions=[
+                KIRFunctionV0(
+                    name="main",
+                    params=["name"],
+                    body=[
+                        KIRLetV0(name="greeting", expr=KIRConcatV0(left=KIRVarV0(name="name"), right=KIRStringV0(value="!"))),
+                        KIRReturnV0(expr=KIRVarV0(name="greeting")),
+                    ],
+                )
+            ],
+        )
+        with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("selfhost KIR entry should not use python kir runtime")):
+            actual = selfhost_runtime_module.execute_kir_entry_v0(program, entry="main", args=["hello"], builtins={})
+        self.assertEqual(actual, "hello!")
 
     def test_kagi_subset_module_exports_run_subset_program_via_kir(self):
         self.assertTrue(callable(run_subset_program_via_kir))
