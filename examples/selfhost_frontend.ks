@@ -19,6 +19,27 @@ fn try_parse_single_print(source) {
   }
 }
 
+fn try_parse_single_print_concat(source) {
+  let text = trim(source);
+  let q = quote();
+  if starts_with(text, "print concat(") {
+    let quoted1 = extract_quoted(text);
+    let after_first = after_substring(text, concat(q, ", "));
+    let quoted2 = extract_quoted(after_first);
+    let rebuilt = concat(
+      "print concat(",
+      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+    );
+    if eq(rebuilt, text) {
+      return program_print_concat_ast(quoted1, quoted2);
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
 fn try_parse_simple_let_print(source) {
   let text = trim(source);
   if eq(line_count(text), 2) {
@@ -197,6 +218,27 @@ fn try_lower_single_print(source) {
   }
 }
 
+fn try_lower_single_print_concat(source) {
+  let text = trim(source);
+  let q = quote();
+  if starts_with(text, "print concat(") {
+    let quoted1 = extract_quoted(text);
+    let after_first = after_substring(text, concat(q, ", "));
+    let quoted2 = extract_quoted(after_first);
+    let rebuilt = concat(
+      "print concat(",
+      concat(q, concat(quoted1, concat(q, concat(", ", concat(q, concat(quoted2, concat(q, ")")))))))
+    );
+    if eq(rebuilt, text) {
+      return print_many_artifact(concat(quoted1, quoted2));
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
 fn try_lower_simple_let_print(source) {
   let text = trim(source);
   if eq(line_count(text), 2) {
@@ -357,26 +399,31 @@ fn try_lower_simple_single_arg_fn_call(source) {
 fn parse(source) {
   let simple = try_parse_single_print(source);
   if eq(simple, "") {
-    let simple_let = try_parse_simple_let_print(source);
-    if eq(simple_let, "") {
-      let simple_let_concat = try_parse_simple_let_concat_print(source);
-      if eq(simple_let_concat, "") {
-        let simple_fn = try_parse_simple_single_arg_fn_call(source);
-        if eq(simple_fn, "") {
-          let ast = parse_print_program(source);
-          if eq(ast, "") {
-            return "error: expected quoted string";
+    let simple_print_concat = try_parse_single_print_concat(source);
+    if eq(simple_print_concat, "") {
+      let simple_let = try_parse_simple_let_print(source);
+      if eq(simple_let, "") {
+        let simple_let_concat = try_parse_simple_let_concat_print(source);
+        if eq(simple_let_concat, "") {
+          let simple_fn = try_parse_simple_single_arg_fn_call(source);
+          if eq(simple_fn, "") {
+            let ast = parse_print_program(source);
+            if eq(ast, "") {
+              return "error: expected quoted string";
+            } else {
+              return ast;
+            }
           } else {
-            return ast;
+            return simple_fn;
           }
         } else {
-          return simple_fn;
+          return simple_let_concat;
         }
       } else {
-        return simple_let_concat;
+        return simple_let;
       }
     } else {
-      return simple_let;
+      return simple_print_concat;
     }
   } else {
     return simple;
@@ -394,13 +441,18 @@ fn lower_ast(ast) {
 fn try_check_known(source) {
   let simple = try_lower_single_print(source);
   if eq(simple, "") {
-    let simple_let = try_lower_simple_let_print(source);
-    if eq(simple_let, "") {
-      let simple_let_concat = try_lower_simple_let_concat_print(source);
-      if eq(simple_let_concat, "") {
-        let simple_fn = try_lower_simple_single_arg_fn_call(source);
-        if eq(simple_fn, "") {
-          return "";
+    let simple_print_concat = try_lower_single_print_concat(source);
+    if eq(simple_print_concat, "") {
+      let simple_let = try_lower_simple_let_print(source);
+      if eq(simple_let, "") {
+        let simple_let_concat = try_lower_simple_let_concat_print(source);
+        if eq(simple_let_concat, "") {
+          let simple_fn = try_lower_simple_single_arg_fn_call(source);
+          if eq(simple_fn, "") {
+            return "";
+          } else {
+            return "ok";
+          }
         } else {
           return "ok";
         }
@@ -432,26 +484,31 @@ fn check(source) {
 fn lower(source) {
   let simple = try_lower_single_print(source);
   if eq(simple, "") {
-    let simple_let = try_lower_simple_let_print(source);
-    if eq(simple_let, "") {
-      let simple_let_concat = try_lower_simple_let_concat_print(source);
-      if eq(simple_let_concat, "") {
-        let simple_fn = try_lower_simple_single_arg_fn_call(source);
-        if eq(simple_fn, "") {
-          let ast = parse(source);
-          if eq(ast, "error: expected quoted string") {
-            return ast;
+    let simple_print_concat = try_lower_single_print_concat(source);
+    if eq(simple_print_concat, "") {
+      let simple_let = try_lower_simple_let_print(source);
+      if eq(simple_let, "") {
+        let simple_let_concat = try_lower_simple_let_concat_print(source);
+        if eq(simple_let_concat, "") {
+          let simple_fn = try_lower_simple_single_arg_fn_call(source);
+          if eq(simple_fn, "") {
+            let ast = parse(source);
+            if eq(ast, "error: expected quoted string") {
+              return ast;
+            } else {
+              return lower_ast(ast);
+            }
           } else {
-            return lower_ast(ast);
+            return simple_fn;
           }
         } else {
-          return simple_fn;
+          return simple_let_concat;
         }
       } else {
-        return simple_let_concat;
+        return simple_let;
       }
     } else {
-      return simple_let;
+      return simple_print_concat;
     }
   } else {
     return simple;

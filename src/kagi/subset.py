@@ -303,6 +303,31 @@ def builtin_program_ast(text: object) -> str:
     )
 
 
+def builtin_program_print_concat_ast(left_text: object, right_text: object) -> str:
+    if not isinstance(left_text, str):
+        left_text = str(left_text)
+    if not isinstance(right_text, str):
+        right_text = str(right_text)
+    return json.dumps(
+        {
+            "kind": "program",
+            "functions": [],
+            "statements": [
+                {
+                    "kind": "print",
+                    "expr": {
+                        "kind": "concat",
+                        "left": {"kind": "string", "value": left_text},
+                        "right": {"kind": "string", "value": right_text},
+                    },
+                }
+            ],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def builtin_program_let_print_ast(name: object, text: object) -> str:
     if not isinstance(name, str):
         name = str(name)
@@ -917,6 +942,7 @@ BUILTINS = {
     "print_ast": builtin_print_ast,
     "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
+    "program_print_concat_ast": builtin_program_print_concat_ast,
     "program_let_concat_print_ast": builtin_program_let_concat_print_ast,
     "program_single_arg_fn_call_ast": builtin_program_single_arg_fn_call_ast,
     "program_let_print_ast": builtin_program_let_print_ast,
