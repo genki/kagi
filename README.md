@@ -69,7 +69,10 @@ kagi selfhost-check --json /home/vagrant/kagi/examples/selfhost_frontend.ks /hom
 kagi selfhost-capir --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-emit --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
+kagi selfhost-run /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 ```
+
+最後のコマンドは JSON ではなく、実行結果そのものを `stdout` に出します。
 
 期待値の例:
 

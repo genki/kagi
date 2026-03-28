@@ -54,6 +54,10 @@ def emit_payload(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def emit_text(text: str) -> None:
+    print(text, end="" if text.endswith("\n") else "\n")
+
+
 def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
     if isinstance(exc, DiagnosticError):
         diagnostic = exc.diagnostic
@@ -234,21 +238,24 @@ def main() -> None:
             capir = lower_tiny_program_to_capir(tiny_program)
             artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
             value = execute_capir_fragment(capir).output
-            emit_payload(
-                {
-                    "ok": True,
-                    "entry": args.entry,
-                    "source": str(args.source),
-                    "ast": ast,
-                    "capir": {
-                        "effect": capir.effect,
-                        "ops": [{"text": op.text} for op in capir.ops],
-                        "serialized": serialize_capir_fragment(capir),
-                    },
-                    "artifact": artifact,
-                    "value": value,
-                }
-            )
+            if args.json:
+                emit_payload(
+                    {
+                        "ok": True,
+                        "entry": args.entry,
+                        "source": str(args.source),
+                        "ast": ast,
+                        "capir": {
+                            "effect": capir.effect,
+                            "ops": [{"text": op.text} for op in capir.ops],
+                            "serialized": serialize_capir_fragment(capir),
+                        },
+                        "artifact": artifact,
+                        "value": value,
+                    }
+                )
+            else:
+                emit_text(value)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return

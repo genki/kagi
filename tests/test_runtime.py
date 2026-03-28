@@ -346,6 +346,27 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "hello, world!")
 
+    def test_cli_selfhost_run_writes_plain_stdout_without_json(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_concat.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout, "hello, world!\n")
+        self.assertEqual(proc.stderr, "")
+
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]
         parse_proc = subprocess.run(
