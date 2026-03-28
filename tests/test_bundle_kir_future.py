@@ -5,11 +5,13 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from kagi.artifact import PrintArtifactV1
+from kagi.bootstrap_builders import builtin_program_ast_to_hir
 from kagi.compile_result import compile_source_v1
 from kagi.hir import lower_surface_program_to_hir_v1
 from kagi.kir import KIRPrintV0, KIRProgramV0, KIRStringV0, serialize_kir_program_v0
 from kagi.selfhost_analysis import SelfhostAnalysisV1
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
+import kagi.selfhost_runtime as selfhost_runtime
 from kagi.surface_ast import parse_surface_program_v1
 
 
@@ -43,22 +45,20 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
-    def test_compile_source_v1_canonical_frontend_no_longer_calls_python_hir_to_kir_builtin(self):
+    def test_compile_source_v1_canonical_frontend_still_calls_python_program_ast_to_hir_builtin(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
 
-        from kagi.bootstrap_builders import builtin_hir_to_kir
-        import kagi.lower_subset_to_kir as lower_subset_to_kir
-
-        spy = Mock(side_effect=builtin_hir_to_kir)
-        with patch(
-            "kagi.lower_subset_to_kir.SUBSET_KIR_BUILTINS",
-            {**lower_subset_to_kir.SUBSET_KIR_BUILTINS, "hir_to_kir": spy},
+        spy = Mock(side_effect=builtin_program_ast_to_hir)
+        with patch.object(
+            selfhost_runtime,
+            "SUBSET_KIR_BUILTINS",
+            {**selfhost_runtime.SUBSET_KIR_BUILTINS, "program_ast_to_hir": spy},
         ):
             compiled = compile_source_v1(frontend_source, source)
 
-        self.assertEqual(spy.call_count, 0)
+        self.assertGreaterEqual(spy.call_count, 1)
         self.assertEqual(compiled.stdout, "hello, world!")
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
