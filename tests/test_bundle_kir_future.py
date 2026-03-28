@@ -45,6 +45,24 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(compiled.lower.kir, kir)
         self.assertEqual(compiled.compile_kir, kir)
 
+    def test_compile_source_v1_still_depends_on_python_kir_executor(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.selfhost_runtime.execute_kir_entry_v0", side_effect=AssertionError("python kir executor is still required")):
+            with self.assertRaisesRegex(AssertionError, "python kir executor is still required"):
+                compile_source_v1(frontend_source, source)
+
+    def test_compile_source_v1_still_depends_on_python_bundle_decoder(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        with patch("kagi.compile_result.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("python bundle decoder is still required")):
+            with self.assertRaisesRegex(AssertionError, "python bundle decoder is still required"):
+                compile_source_v1(frontend_source, source)
+
     def test_compile_source_v1_canonical_frontend_does_not_call_python_bootstrap_builtins(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -110,6 +128,7 @@ class BundleKirFutureTest(unittest.TestCase):
             "program_ast_to_hir",
             "hir_to_kir",
             "hir_to_analysis",
+            "quote",
         )
         forbidden_builtins = {
             name: Mock(side_effect=AssertionError(f"{name} should not be used by canonical bundle path"))
@@ -197,6 +216,7 @@ class BundleKirFutureTest(unittest.TestCase):
             "program_let_print_ast",
             "program_two_prints_ast",
             "program_zero_arg_fn_call_ast",
+            "quote",
         )
 
         for filename in cases:

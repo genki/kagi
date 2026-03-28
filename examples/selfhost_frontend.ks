@@ -1,6 +1,10 @@
+fn local_quote() {
+  return "\"";
+}
+
 fn try_parse_single_print(source) {
   let text = trim(source);
-  let q = quote();
+  let q = local_quote();
   let prefix = concat("print ", q);
   if starts_with(text, prefix) {
     if ends_with(text, q) {
@@ -20,7 +24,7 @@ fn try_parse_single_print(source) {
 }
 
 fn after_quote_comma(text) {
-  let q = quote();
+  let q = local_quote();
   let with_space = after_substring(text, concat(q, ", "));
   if eq(with_space, "") {
     return after_substring(text, concat(q, ","));
@@ -30,7 +34,7 @@ fn after_quote_comma(text) {
 }
 
 fn concat_call_matches(text, prefix, left_text, right_text) {
-  let q = quote();
+  let q = local_quote();
   let with_space = concat(
     prefix,
     concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
@@ -52,7 +56,7 @@ fn concat_call_matches(text, prefix, left_text, right_text) {
 
 fn try_parse_single_print_concat(source) {
   let text = trim(source);
-  let q = quote();
+  let q = local_quote();
   if starts_with(text, "print concat(") {
     let quoted1 = extract_quoted(text);
     let after_first = after_quote_comma(text);
@@ -72,7 +76,7 @@ fn try_parse_simple_let_print(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     let delim = concat(" = ", q);
     if starts_with(line1, "let ") {
       let rest = after_substring(line1, "let ");
@@ -106,7 +110,7 @@ fn try_parse_simple_let_concat_print(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "print ") {
         let rest = after_substring(line1, "let ");
@@ -146,7 +150,7 @@ fn try_parse_simple_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
@@ -232,7 +236,7 @@ fn try_parse_simple_single_arg_fn_call(source) {
   }
 }
 fn build_print_many_artifact_two(first_text, second_text) {
-  let q = quote();
+  let q = local_quote();
   return concat(
     "{\"kind\":\"print_many\",\"texts\":[",
     concat(
@@ -246,7 +250,7 @@ fn build_print_many_artifact_two(first_text, second_text) {
 }
 
 fn build_print_many_json_1(text) {
-  let q = quote();
+  let q = local_quote();
   return concat(
     "{\"kind\":\"print_many\",\"texts\":[",
     concat(q, concat(text, concat(q, "]}")))
@@ -267,7 +271,7 @@ fn try_parse_two_prints_unused(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     let prefix = concat("print ", q);
     if starts_with(line1, prefix) {
       if starts_with(line2, prefix) {
@@ -308,7 +312,7 @@ fn try_lower_two_prints(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     let prefix = concat("print ", q);
     if starts_with(line1, prefix) {
       if starts_with(line2, prefix) {
@@ -351,7 +355,7 @@ fn try_parse_zero_arg_fn_call_unused(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "fn ") {
       if ends_with(line1, "{") {
         if starts_with(line2, "let ") {
@@ -525,7 +529,7 @@ fn try_parse_if_expr_print(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "print if(") {
@@ -630,7 +634,7 @@ fn try_lower_if_expr_print(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "print if(") {
@@ -736,7 +740,7 @@ fn try_parse_if_stmt_unused(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "if ") {
@@ -865,7 +869,7 @@ fn try_lower_if_stmt(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "if ") {
@@ -1197,7 +1201,7 @@ fn build_pipeline_bundle_json(ast_json, hir_json, kir_json, analysis_json, artif
 
 fn parse_simple_line_expr_json(text) {
   let line = trim(text);
-  let q = quote();
+  let q = local_quote();
   if starts_with(line, q) {
     if ends_with(line, q) {
       let quoted = extract_quoted(line);
@@ -1556,7 +1560,7 @@ fn try_build_bundle_zero_arg_fn_call(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if eq(line4, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "() {") {
@@ -1651,7 +1655,7 @@ fn try_build_bundle_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
@@ -1740,7 +1744,7 @@ fn try_build_bundle_if_expr(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -1826,7 +1830,7 @@ fn try_build_bundle_if_stmt(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -2035,7 +2039,7 @@ fn try_hir_zero_arg_fn_call(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if eq(line4, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "() {") {
@@ -2117,7 +2121,7 @@ fn try_kir_zero_arg_fn_call(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if eq(line4, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "() {") {
@@ -2199,7 +2203,7 @@ fn try_analysis_zero_arg_fn_call(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if eq(line4, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "() {") {
@@ -2275,7 +2279,7 @@ fn try_hir_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
@@ -2353,7 +2357,7 @@ fn try_kir_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
@@ -2431,7 +2435,7 @@ fn try_analysis_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
@@ -2505,7 +2509,7 @@ fn try_hir_if_expr(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -2575,7 +2579,7 @@ fn try_kir_if_expr(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -2649,7 +2653,7 @@ fn try_hir_if_stmt(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -2740,7 +2744,7 @@ fn try_kir_if_stmt(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -2853,7 +2857,7 @@ fn try_parse_two_prints(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, concat("print ", q)) {
       if starts_with(line2, concat("print ", q)) {
         let text1 = extract_quoted(line1);
@@ -2890,7 +2894,7 @@ fn try_parse_zero_arg_fn_call(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if eq(line4, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "() {") {
@@ -2970,7 +2974,7 @@ fn try_parse_if_expr(source) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -3044,7 +3048,7 @@ fn try_parse_if_stmt(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
     let left_text = extract_quoted(line1);
     let after_left = after_substring(line1, concat(q, ", "));
@@ -3190,7 +3194,7 @@ fn try_parse_zero_arg_fn_call_simple(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "fn ") {
       if ends_with(line1, "{") {
         if starts_with(line2, "let ") {
@@ -3253,7 +3257,7 @@ fn try_lower_zero_arg_fn_call_simple(source) {
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
     let line5 = line_at(text, 4);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "fn ") {
       if ends_with(line1, "{") {
         if starts_with(line2, "let ") {
@@ -3315,7 +3319,7 @@ fn try_parse_if_stmt_simple(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "if ") {
@@ -3398,7 +3402,7 @@ fn try_lower_if_stmt_simple(source) {
     let line5 = line_at(text, 4);
     let line6 = line_at(text, 5);
     let line7 = line_at(text, 6);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "let ") {
         if starts_with(line3, "if ") {
@@ -3466,7 +3470,7 @@ fn try_lower_if_stmt_simple(source) {
 
 fn try_lower_single_print(source) {
   let text = trim(source);
-  let q = quote();
+  let q = local_quote();
   let prefix = concat("print ", q);
   if starts_with(text, prefix) {
     if ends_with(text, q) {
@@ -3487,7 +3491,7 @@ fn try_lower_single_print(source) {
 
 fn try_lower_single_print_concat(source) {
   let text = trim(source);
-  let q = quote();
+  let q = local_quote();
   if starts_with(text, "print concat(") {
     let quoted1 = extract_quoted(text);
     let after_first = after_quote_comma(text);
@@ -3507,7 +3511,7 @@ fn try_lower_simple_let_print(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     let delim = concat(" = ", q);
     if starts_with(line1, "let ") {
       let rest = after_substring(line1, "let ");
@@ -3541,7 +3545,7 @@ fn try_lower_simple_let_concat_print(source) {
   if eq(line_count(text), 2) {
     let line1 = line_at(text, 0);
     let line2 = line_at(text, 1);
-    let q = quote();
+    let q = local_quote();
     if starts_with(line1, "let ") {
       if starts_with(line2, "print ") {
         let rest = after_substring(line1, "let ");
@@ -3581,7 +3585,7 @@ fn try_lower_simple_single_arg_fn_call(source) {
     let line2 = line_at(text, 1);
     let line3 = line_at(text, 2);
     let line4 = line_at(text, 3);
-    let q = quote();
+    let q = local_quote();
     if eq(line3, "}") {
       if starts_with(line1, "fn ") {
         if ends_with(line1, "{") {
