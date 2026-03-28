@@ -53,16 +53,96 @@ fn try_parse_simple_let_print(source) {
   }
 }
 
+fn try_parse_simple_single_arg_fn_call(source) {
+  let text = trim(source);
+  if eq(line_count(text), 4) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let q = quote();
+    if eq(line3, "}") {
+      if starts_with(line1, "fn ") {
+        if ends_with(line1, "{") {
+          if starts_with(line2, "print concat(") {
+            if starts_with(line4, "call ") {
+              let fn_header = after_substring(line1, "fn ");
+              let fn_name = before_substring(fn_header, "(");
+              let fn_rest = after_substring(fn_header, "(");
+              let param_name = before_substring(fn_rest, ") {");
+              let suffix = extract_quoted(line2);
+              let call_header = after_substring(line4, "call ");
+              let call_name = before_substring(call_header, "(");
+              let arg_text = extract_quoted(line4);
+              let rebuilt1 = concat("fn ", concat(fn_name, concat("(", concat(param_name, ") {"))));
+              let rebuilt2 = concat(
+                "print concat(",
+                concat(param_name, concat(", ", concat(q, concat(suffix, concat(q, ")")))))
+              );
+              let rebuilt4 = concat(
+                "call ",
+                concat(call_name, concat("(", concat(q, concat(arg_text, concat(q, ")")))))
+              );
+              if is_identifier(fn_name) {
+                if is_identifier(param_name) {
+                  if eq(fn_name, call_name) {
+                    if eq(rebuilt1, line1) {
+                      if eq(rebuilt2, line2) {
+                        if eq(rebuilt4, line4) {
+                          return program_single_arg_fn_call_ast(fn_name, param_name, arg_text, suffix);
+                        } else {
+                          return "";
+                        }
+                      } else {
+                        return "";
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
 fn parse(source) {
   let simple = try_parse_single_print(source);
   if eq(simple, "") {
     let simple_let = try_parse_simple_let_print(source);
     if eq(simple_let, "") {
-      let ast = parse_print_program(source);
-      if eq(ast, "") {
-        return "error: expected quoted string";
+      let simple_fn = try_parse_simple_single_arg_fn_call(source);
+      if eq(simple_fn, "") {
+        let ast = parse_print_program(source);
+        if eq(ast, "") {
+          return "error: expected quoted string";
+        } else {
+          return ast;
+        }
       } else {
-        return ast;
+        return simple_fn;
       }
     } else {
       return simple_let;

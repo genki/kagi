@@ -237,6 +237,44 @@ class RuntimeTest(unittest.TestCase):
             },
         )
 
+    def test_subset_builtins_program_single_arg_fn_call_ast_matches_current_shape(self):
+        source = """
+        fn main() {
+            return program_single_arg_fn_call_ast("emit_suffix", "name", "hello, world", "!");
+        }
+        """
+        value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(
+            json.loads(value),
+            {
+                "kind": "program",
+                "functions": [
+                    {
+                        "kind": "fn",
+                        "name": "emit_suffix",
+                        "params": ["name"],
+                        "body": [
+                            {
+                                "kind": "print",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "var", "name": "name"},
+                                    "right": {"kind": "string", "value": "!"},
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "statements": [
+                    {
+                        "kind": "call",
+                        "name": "emit_suffix",
+                        "args": [{"kind": "string", "value": "hello, world"}],
+                    }
+                ],
+            },
+        )
+
     def test_selfhost_frontend_emits_hello_world(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -532,6 +570,42 @@ class RuntimeTest(unittest.TestCase):
             },
         )
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
+    def test_selfhost_frontend_selfhosts_simple_single_argument_function_call(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {
+                "kind": "program",
+                "functions": [
+                    {
+                        "kind": "fn",
+                        "name": "emit_suffix",
+                        "params": ["name"],
+                        "body": [
+                            {
+                                "kind": "print",
+                                "expr": {
+                                    "kind": "concat",
+                                    "left": {"kind": "var", "name": "name"},
+                                    "right": {"kind": "string", "value": "!"},
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "statements": [
+                    {
+                        "kind": "call",
+                        "name": "emit_suffix",
+                        "args": [{"kind": "string", "value": "hello, world"}],
+                    }
+                ],
+            },
+        )
 
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]

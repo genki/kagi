@@ -322,6 +322,53 @@ def builtin_program_let_print_ast(name: object, text: object) -> str:
     )
 
 
+def builtin_program_single_arg_fn_call_ast(
+    fn_name: object,
+    param_name: object,
+    arg_text: object,
+    suffix_text: object,
+) -> str:
+    if not isinstance(fn_name, str):
+        fn_name = str(fn_name)
+    if not isinstance(param_name, str):
+        param_name = str(param_name)
+    if not isinstance(arg_text, str):
+        arg_text = str(arg_text)
+    if not isinstance(suffix_text, str):
+        suffix_text = str(suffix_text)
+    return json.dumps(
+        {
+            "kind": "program",
+            "functions": [
+                {
+                    "kind": "fn",
+                    "name": fn_name,
+                    "params": [param_name],
+                    "body": [
+                        {
+                            "kind": "print",
+                            "expr": {
+                                "kind": "concat",
+                                "left": {"kind": "var", "name": param_name},
+                                "right": {"kind": "string", "value": suffix_text},
+                            },
+                        }
+                    ],
+                }
+            ],
+            "statements": [
+                {
+                    "kind": "call",
+                    "name": fn_name,
+                    "args": [{"kind": "string", "value": arg_text}],
+                }
+            ],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def builtin_program_text(ast: object) -> str:
     if not isinstance(ast, str):
         return ""
@@ -834,6 +881,7 @@ BUILTINS = {
     "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
     "program_ast": builtin_program_ast,
+    "program_single_arg_fn_call_ast": builtin_program_single_arg_fn_call_ast,
     "program_let_print_ast": builtin_program_let_print_ast,
     "program_text": builtin_program_text,
     "quote": builtin_quote,
