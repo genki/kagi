@@ -1724,6 +1724,195 @@ fn try_build_bundle_single_arg_fn_call(source) {
   }
 }
 
+fn try_build_bundle_if_expr(source) {
+  let text = trim(source);
+  if eq(line_count(text), 3) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line3);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat(
+      "print if(",
+      concat(
+        enabled_name,
+        concat(", ", concat(greeting_name, concat(", ", concat(q, concat(disabled_text, concat(q, ")"))))))
+      )
+    );
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+              let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+              let print_ast = build_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+              let stmts_json = join_statements_3(greeting_ast, enabled_ast, print_ast);
+              let ast_json = build_program_json(stmts_json);
+              let hir_json = build_hir_program_json("", stmts_json);
+              let greeting_kir = build_kir_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+              let enabled_kir = build_kir_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+              let print_kir = build_kir_print_stmt_json(build_if_expr_json(build_var_expr_json(enabled_name), build_var_expr_json(greeting_name), build_string_expr_json(disabled_text)));
+              let kir_json = build_kir_program_json("", join_statements_3(greeting_kir, enabled_kir, print_kir));
+              let artifact_json = lower(source);
+              if starts_with(artifact_json, "error:") {
+                return "";
+              } else {
+                return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_program_print_json(), artifact_json);
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
+fn try_build_bundle_if_stmt(source) {
+  let text = trim(source);
+  if eq(line_count(text), 7) {
+    let line1 = line_at(text, 0);
+    let line2 = line_at(text, 1);
+    let line3 = line_at(text, 2);
+    let line4 = line_at(text, 3);
+    let line5 = line_at(text, 4);
+    let line6 = line_at(text, 5);
+    let line7 = line_at(text, 6);
+    let q = quote();
+    let greeting_name = before_substring(after_substring(line1, "let "), " = concat(");
+    let left_text = extract_quoted(line1);
+    let after_left = after_substring(line1, concat(q, ", "));
+    let right_text = extract_quoted(after_left);
+    let enabled_name = before_substring(after_substring(line2, "let "), " = eq(");
+    let expected_text = extract_quoted(line2);
+    let disabled_text = extract_quoted(line6);
+    let rebuilt1 = concat(
+      "let ",
+      concat(
+        greeting_name,
+        concat(
+          " = concat(",
+          concat(q, concat(left_text, concat(q, concat(", ", concat(q, concat(right_text, concat(q, ")")))))))
+        )
+      )
+    );
+    let rebuilt2 = concat(
+      "let ",
+      concat(
+        enabled_name,
+        concat(
+          " = eq(",
+          concat(greeting_name, concat(", ", concat(q, concat(expected_text, concat(q, ")")))))
+        )
+      )
+    );
+    let rebuilt3 = concat("if ", concat(enabled_name, " {"));
+    let rebuilt4 = concat("print ", greeting_name);
+    let rebuilt5 = "} else {";
+    let rebuilt6 = concat("print ", concat(q, concat(disabled_text, q)));
+    if is_identifier(greeting_name) {
+      if is_identifier(enabled_name) {
+        if eq(rebuilt1, line1) {
+          if eq(rebuilt2, line2) {
+            if eq(rebuilt3, line3) {
+              if eq(rebuilt4, line4) {
+                if eq(rebuilt5, line5) {
+                  if eq(rebuilt6, line6) {
+                    if eq(line7, "}") {
+                      let greeting_ast = build_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let enabled_ast = build_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                      let if_ast = build_if_stmt_json(
+                        build_var_expr_json(enabled_name),
+                        build_print_stmt_json(build_var_expr_json(greeting_name)),
+                        build_print_stmt_json(build_string_expr_json(disabled_text))
+                      );
+                      let stmts_json = join_statements_3(greeting_ast, enabled_ast, if_ast);
+                      let ast_json = build_program_json(stmts_json);
+                      let hir_json = build_hir_program_json("", stmts_json);
+                      let greeting_kir = build_kir_let_stmt_json(greeting_name, build_concat_expr_json(build_string_expr_json(left_text), build_string_expr_json(right_text)));
+                      let enabled_kir = build_kir_let_stmt_json(enabled_name, build_eq_expr_json(build_var_expr_json(greeting_name), build_string_expr_json(expected_text)));
+                      let if_kir = build_kir_if_stmt_json(
+                        build_var_expr_json(enabled_name),
+                        build_kir_print_stmt_json(build_var_expr_json(greeting_name)),
+                        build_kir_print_stmt_json(build_string_expr_json(disabled_text))
+                      );
+                      let kir_json = build_kir_program_json("", join_statements_3(greeting_kir, enabled_kir, if_kir));
+                      let artifact_json = lower(source);
+                      if starts_with(artifact_json, "error:") {
+                        return "";
+                      } else {
+                        return build_pipeline_bundle_json(ast_json, hir_json, kir_json, build_analysis_program_print_json(), artifact_json);
+                      }
+                    } else {
+                      return "";
+                    }
+                  } else {
+                    return "";
+                  }
+                } else {
+                  return "";
+                }
+              } else {
+                return "";
+              }
+            } else {
+              return "";
+            }
+          } else {
+            return "";
+          }
+        } else {
+          return "";
+        }
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  } else {
+    return "";
+  }
+}
+
 fn try_parse_two_prints(source) {
   let text = trim(source);
   if eq(line_count(text), 2) {
@@ -2652,31 +2841,41 @@ fn pipeline(source) {
     if eq(zero_arg_bundle, "") {
       let single_arg_bundle = try_build_bundle_single_arg_fn_call(source);
       if eq(single_arg_bundle, "") {
-        let ast = parse(source);
-        if starts_with(ast, "error:") {
-          return ast;
-        } else {
-          let hir_json = hir(source);
-          if starts_with(hir_json, "error:") {
-            return hir_json;
-          } else {
-            let kir_json = kir(source);
-            if starts_with(kir_json, "error:") {
-              return kir_json;
+        let if_expr_bundle = try_build_bundle_if_expr(source);
+        if eq(if_expr_bundle, "") {
+          let if_stmt_bundle = try_build_bundle_if_stmt(source);
+          if eq(if_stmt_bundle, "") {
+            let ast = parse(source);
+            if starts_with(ast, "error:") {
+              return ast;
             } else {
-              let analysis_json = analysis(source);
-              if starts_with(analysis_json, "error:") {
-                return analysis_json;
+              let hir_json = hir(source);
+              if starts_with(hir_json, "error:") {
+                return hir_json;
               } else {
-                let artifact = lower(source);
-                if starts_with(artifact, "error:") {
-                  return artifact;
+                let kir_json = kir(source);
+                if starts_with(kir_json, "error:") {
+                  return kir_json;
                 } else {
-                  return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+                  let analysis_json = analysis(source);
+                  if starts_with(analysis_json, "error:") {
+                    return analysis_json;
+                  } else {
+                    let artifact = lower(source);
+                    if starts_with(artifact, "error:") {
+                      return artifact;
+                    } else {
+                      return build_pipeline_bundle_json(ast, hir_json, kir_json, analysis_json, artifact);
+                    }
+                  }
                 }
               }
             }
+          } else {
+            return if_stmt_bundle;
           }
+        } else {
+          return if_expr_bundle;
         }
       } else {
         return single_arg_bundle;

@@ -48,27 +48,37 @@ class BundleKirFutureTest(unittest.TestCase):
     def test_compile_source_v1_canonical_frontend_does_not_call_python_bootstrap_builtins(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
-        source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
+        corpus = [
+            "hello.ksrc",
+            "hello_concat.ksrc",
+            "hello_let.ksrc",
+            "hello_if.ksrc",
+            "hello_fn.ksrc",
+            "hello_arg_fn.ksrc",
+        ]
 
-        ast_spy = Mock(side_effect=builtin_program_ast_to_hir)
-        kir_spy = Mock(side_effect=builtin_hir_to_kir)
-        analysis_spy = Mock(side_effect=builtin_hir_to_analysis)
-        with patch.object(
-            selfhost_runtime,
-            "SUBSET_KIR_BUILTINS",
-            {
-                **selfhost_runtime.SUBSET_KIR_BUILTINS,
-                "program_ast_to_hir": ast_spy,
-                "hir_to_kir": kir_spy,
-                "hir_to_analysis": analysis_spy,
-            },
-        ):
-            compiled = compile_source_v1(frontend_source, source)
+        for name in corpus:
+            with self.subTest(case=name):
+                source = (root / "examples" / name).read_text(encoding="utf-8")
+                ast_spy = Mock(side_effect=builtin_program_ast_to_hir)
+                kir_spy = Mock(side_effect=builtin_hir_to_kir)
+                analysis_spy = Mock(side_effect=builtin_hir_to_analysis)
+                with patch.object(
+                    selfhost_runtime,
+                    "SUBSET_KIR_BUILTINS",
+                    {
+                        **selfhost_runtime.SUBSET_KIR_BUILTINS,
+                        "program_ast_to_hir": ast_spy,
+                        "hir_to_kir": kir_spy,
+                        "hir_to_analysis": analysis_spy,
+                    },
+                ):
+                    compiled = compile_source_v1(frontend_source, source)
 
-        self.assertEqual(ast_spy.call_count, 0)
-        self.assertEqual(kir_spy.call_count, 0)
-        self.assertEqual(analysis_spy.call_count, 0)
-        self.assertEqual(compiled.stdout, "hello, world!")
+                self.assertEqual(ast_spy.call_count, 0)
+                self.assertEqual(kir_spy.call_count, 0)
+                self.assertEqual(analysis_spy.call_count, 0)
+                self.assertEqual(compiled.stdout, "hello, world!")
 
     def test_parse_selfhost_pipeline_bundle_v1_future_kir_field_roundtrips(self):
         kir = KIRProgramV0(instructions=[KIRPrintV0(expr=KIRStringV0(value="hello"))])
