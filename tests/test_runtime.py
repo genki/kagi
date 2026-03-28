@@ -237,6 +237,24 @@ class RuntimeTest(unittest.TestCase):
         value = run_subset_program(source, entry="main", args=["world!"])
         self.assertEqual(value, "hello, world!")
 
+    def test_subset_program_interpreter_does_not_need_concat_or_eq_in_builtin_map(self):
+        source = """
+        fn main(name) {
+            let greeting = concat("hello, ", name);
+            if eq(greeting, "hello, world!") {
+                return greeting;
+            } else {
+                return "no";
+            }
+        }
+        """
+        patched_builtins = dict(subset_module.BUILTINS)
+        patched_builtins.pop("concat", None)
+        patched_builtins.pop("eq", None)
+        with patch("kagi.subset_eval.BUILTINS", patched_builtins):
+            value = run_subset_program(source, entry="main", args=["world!"])
+        self.assertEqual(value, "hello, world!")
+
     def test_subset_program_via_kir_matches_interpreter(self):
         source = """
         fn main(name) {

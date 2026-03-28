@@ -118,6 +118,32 @@ def eval_expr(functions: dict[str, FunctionDef], expr: Expr, env: dict[str, obje
         return env[expr.name]
     if isinstance(expr, Call):
         args = [eval_expr(functions, arg, env) for arg in expr.args]
+        if expr.callee == "concat":
+            if len(args) != 2:
+                raise DiagnosticError(
+                    Diagnostic(
+                        phase="subset-runtime",
+                        code="arity_mismatch",
+                        message="concat expects 2 arguments",
+                        line=None,
+                        column=None,
+                        snippet=None,
+                    )
+                )
+            return f"{args[0]}{args[1]}"
+        if expr.callee == "eq":
+            if len(args) != 2:
+                raise DiagnosticError(
+                    Diagnostic(
+                        phase="subset-runtime",
+                        code="arity_mismatch",
+                        message="eq expects 2 arguments",
+                        line=None,
+                        column=None,
+                        snippet=None,
+                    )
+                )
+            return args[0] == args[1]
         if expr.callee in BUILTINS:
             return BUILTINS[expr.callee](*args)
         if expr.callee not in functions:
