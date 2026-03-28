@@ -89,7 +89,7 @@
 状態:
 - 最小 subset evaluator と `selfhost-run` を追加
 - tiny frontend に `check / lower / compile` を追加
-- `print "..."` を `emit:...` artifact へ lower できる
+- `print "..."` を JSON artifact へ lower できる
 
 ## 非目標
 

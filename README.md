@@ -53,7 +53,7 @@ self-hosting 用の最小 subset を追加しています。
 - `check(source)`:
   - tiny source を受理できるか判定する
 - `lower(source)`:
-  - tiny source から artifact を作る
+  - tiny source から最小 JSON artifact を作る
 - `compile(source)`:
   - 現在は `lower(source)` の alias
 
@@ -71,7 +71,7 @@ kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/
   "ok": true,
   "entry": "lower",
   "source": "/home/vagrant/kagi/examples/hello.ksrc",
-  "artifact": "emit:hello, world!"
+  "artifact": "{\"kind\":\"print\",\"text\":\"hello, world!\"}"
 }
 ```
 

@@ -21,7 +21,7 @@ fn lower(source) {
   if eq(text, "") {
     return "error: expected quoted string";
   } else {
-    return concat("emit:", text);
+    return print_ast(text);
   }
 }
 

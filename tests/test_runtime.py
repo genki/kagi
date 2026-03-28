@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 import subprocess
 import sys
+import json
 
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
@@ -203,8 +204,8 @@ class RuntimeTest(unittest.TestCase):
         source = (root / "examples" / "hello.ksrc").read_text(encoding="utf-8")
         lowered = run_subset_program(frontend, entry="lower", args=[source])
         compiled = run_subset_program(frontend, entry="compile", args=[source])
-        self.assertEqual(lowered, "emit:hello, world!")
-        self.assertEqual(compiled, "emit:hello, world!")
+        self.assertEqual(json.loads(lowered), {"kind": "print", "text": "hello, world!"})
+        self.assertEqual(json.loads(compiled), {"kind": "print", "text": "hello, world!"})
 
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
@@ -236,7 +237,8 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         payload = __import__("json").loads(proc.stdout)
         self.assertTrue(payload["ok"])
-        self.assertEqual(payload["value"], "emit:hello, world!")
+        self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print","text":"hello, world!"}')
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]
@@ -298,7 +300,7 @@ class RuntimeTest(unittest.TestCase):
         invalid_payload = __import__("json").loads(invalid_proc.stdout)
 
         self.assertEqual(check_payload["value"], "ok")
-        self.assertEqual(emit_payload["artifact"], "emit:hello, world!")
+        self.assertEqual(emit_payload["artifact"], '{"kind":"print","text":"hello, world!"}')
         self.assertFalse(invalid_payload["ok"])
         self.assertEqual(invalid_payload["value"], "error: expected quoted string")
 

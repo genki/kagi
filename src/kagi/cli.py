@@ -52,6 +52,33 @@ def emit_payload(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def render_selfhost_artifact(artifact: object) -> str:
+    if not isinstance(artifact, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("subset-runtime", "selfhost artifact must be a string")
+        )
+    if artifact.startswith("error:"):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("subset-runtime", artifact)
+        )
+    try:
+        payload = json.loads(artifact)
+    except json.JSONDecodeError as exc:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("subset-runtime", f"invalid selfhost artifact json: {exc.msg}")
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("kind") != "print":
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("subset-runtime", "unsupported selfhost artifact")
+        )
+    text = payload.get("text")
+    if not isinstance(text, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("subset-runtime", "print artifact requires string text")
+        )
+    return text
+
+
 def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
     if isinstance(exc, DiagnosticError):
         diagnostic = exc.diagnostic
@@ -215,12 +242,14 @@ def main() -> None:
         try:
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             program_source = Path(args.source).read_text(encoding="utf-8")
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            artifact = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
+            value = render_selfhost_artifact(artifact)
             emit_payload(
                 {
                     "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
+                    "artifact": artifact,
                     "value": value,
                 }
             )

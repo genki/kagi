@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 
 from .diagnostics import Diagnostic, DiagnosticError
 
@@ -229,10 +230,17 @@ def builtin_trim(text: object) -> str:
     return text.strip() if isinstance(text, str) else ""
 
 
+def builtin_print_ast(text: object) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    return json.dumps({"kind": "print", "text": text}, ensure_ascii=False, separators=(",", ":"))
+
+
 BUILTINS = {
     "eq": builtin_eq,
     "concat": builtin_concat,
     "extract_quoted": builtin_extract_quoted,
+    "print_ast": builtin_print_ast,
     "trim": builtin_trim,
 }
 
