@@ -19,7 +19,10 @@ class CapIRArtifactResult:
 
 
 def inspect_capir_artifact(artifact: object) -> dict[str, object]:
-    fragment = capir_fragment_from_artifact(artifact)
+    return inspect_capir_fragment(capir_fragment_from_artifact(artifact))
+
+
+def inspect_capir_fragment(fragment: CapIRFragment) -> dict[str, object]:
     return {
         "effect": fragment.effect,
         "ops": [{"text": op.text} for op in fragment.ops],
@@ -28,9 +31,10 @@ def inspect_capir_artifact(artifact: object) -> dict[str, object]:
 
 
 def execute_and_inspect_capir_artifact(artifact: object) -> CapIRArtifactResult:
+    fragment = capir_fragment_from_artifact(artifact)
     return CapIRArtifactResult(
-        capir=inspect_capir_artifact(artifact),
-        output=execute_capir_artifact(artifact).output,
+        capir=inspect_capir_fragment(fragment),
+        output=execute_capir_fragment(fragment).output,
     )
 
 
