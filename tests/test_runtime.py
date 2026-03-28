@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import kagi
 import kagi.cli as cli_module
+import kagi.kir_runtime as kir_runtime_module
 from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
@@ -352,6 +353,39 @@ class RuntimeTest(unittest.TestCase):
         with patch("kagi.capir_runtime.execute_kir_program_v0", side_effect=AssertionError("capir helper should not use python kir runtime")):
             actual = execute_kir_program_result(program).output
         self.assertEqual(actual, "hello")
+
+    def test_execute_kir_program_v0_print_only_uses_artifact_fast_path(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRPrintV0(expr=KIRStringV0(value="hello")),
+                KIRPrintV0(expr=KIRStringV0(value="world")),
+            ],
+            functions=[],
+        )
+        with patch.object(
+            kir_runtime_module,
+            "_execute_generic_kir_program_v0",
+            side_effect=AssertionError("generic kir executor should not be used for print-only programs"),
+        ):
+            result = execute_kir_program_v0(program)
+        self.assertEqual(result.output, "hello\nworld")
+
+    def test_execute_kir_program_v0_richer_program_still_uses_generic_fallback(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRLetV0(name="greeting", expr=KIRStringV0(value="hello")),
+                KIRPrintV0(expr=KIRVarV0(name="greeting")),
+            ],
+            functions=[],
+        )
+        with patch.object(
+            kir_runtime_module,
+            "_execute_generic_kir_program_v0",
+            wraps=kir_runtime_module._execute_generic_kir_program_v0,
+        ) as generic_spy:
+            result = execute_kir_program_v0(program)
+        self.assertEqual(result.output, "hello")
+        self.assertEqual(generic_spy.call_count, 1)
 
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """

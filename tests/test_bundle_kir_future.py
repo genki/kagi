@@ -11,12 +11,30 @@ from kagi.hir import lower_surface_program_to_hir_v1
 from kagi.kir import KIRPrintV0, KIRProgramV0, KIRStringV0, serialize_kir_program_v0
 from kagi.selfhost_analysis import SelfhostAnalysisV1
 from kagi.selfhost_bundle import parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
+from kagi.subset import run_subset_program, run_subset_program_via_kir
+import kagi.lower_subset_to_kir as lower_subset_to_kir
+import kagi.subset as subset_module
 import kagi.selfhost_runtime as selfhost_runtime
 import kagi.subset_builtins as subset_builtins
 from kagi.surface_ast import parse_surface_program_v1
 
 
 class BundleKirFutureTest(unittest.TestCase):
+    def test_quote_builtin_is_removed_from_python_fallback_builtin_maps(self):
+        self.assertNotIn("quote", subset_builtins.CORE_BUILTINS)
+        self.assertNotIn("quote", subset_module.BUILTINS)
+        self.assertNotIn("quote", lower_subset_to_kir.SUBSET_KIR_BUILTINS)
+
+    def test_selfhost_frontend_fallback_pipeline_still_runs_without_quote_builtin(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
+
+        expected = run_subset_program(frontend_source, entry="pipeline", args=[source])
+        actual = run_subset_program_via_kir(frontend_source, entry="pipeline", args=[source])
+
+        self.assertEqual(json.loads(actual), json.loads(expected))
+
     def test_compile_source_v1_prefers_bundle_kir_over_python_hir_lowering(self):
         frontend_source = "fn pipeline(source) { return source; }"
         surface_ast = parse_surface_program_v1(
