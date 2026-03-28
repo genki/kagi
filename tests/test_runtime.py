@@ -941,6 +941,8 @@ class RuntimeTest(unittest.TestCase):
         source = (root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8")
         compiled = compile_source_v1(frontend, source)
         self.assertEqual(compiled.check.ok, True)
+        self.assertEqual(compiled.check.effects.program_effects, ["print"])
+        self.assertEqual(compiled.check.effects.function_effects["emit_suffix"], ["print"])
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertEqual(compiled.compile_artifact.texts, ["hello, world!"])
         self.assertEqual(compiled.lower.artifact.texts, ["hello, world!"])
@@ -1066,6 +1068,7 @@ class RuntimeTest(unittest.TestCase):
         payload = __import__("json").loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "ok")
+        self.assertEqual(payload["effects"]["program"], ["print"])
 
     def test_cli_selfhost_check_outputs_ok_for_selfhosted_print_concat(self):
         root = Path(__file__).resolve().parents[1]

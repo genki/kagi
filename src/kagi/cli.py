@@ -267,25 +267,32 @@ def main() -> None:
     if args.command == "selfhost-check":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            value = run_subset_program(frontend_source, entry=args.entry, args=[program_source])
-            ok = value == "ok"
-            ast = None
-            if args.json and ok:
-                ast = parse_selfhost_ast(frontend_source, program_source)
-            elif args.json:
-                parsed = parse_selfhost_ast(frontend_source, program_source)
-                ast = None if isinstance(parsed, str) and parsed.startswith("error:") else parsed
+            parsed = parse_selfhost_ast(frontend_source, program_source)
+            if isinstance(parsed, str) and parsed.startswith("error:"):
+                emit_payload(
+                    {
+                        "ok": False,
+                        "entry": args.entry,
+                        "source": str(args.source),
+                        "ast": None,
+                        "value": parsed,
+                    }
+                )
+                raise SystemExit(1)
+            compiled = compile_source_v1(frontend_source, program_source)
             emit_payload(
                 {
-                    "ok": ok,
+                    "ok": True,
                     "entry": args.entry,
                     "source": str(args.source),
-                    "ast": ast,
-                    "value": value,
+                    "ast": parsed if args.json else None,
+                    "value": "ok",
+                    "effects": {
+                        "program": compiled.check.effects.program_effects,
+                        "functions": compiled.check.effects.function_effects,
+                    },
                 }
             )
-            if not ok:
-                raise SystemExit(1)
         except SystemExit:
             raise
         except Exception as exc:

@@ -109,6 +109,11 @@
   - `subset_builtins.py`
   - `bootstrap_builders.py`
   - `subset.py` は facade
+- `resolve-and-typecheck-v0` を追加
+  - `resolve.py`
+  - `typecheck.py`
+  - `effects.py`
+  - `compile_source_v1(...)` が静的パスを通る
 
 ## 非目標
 

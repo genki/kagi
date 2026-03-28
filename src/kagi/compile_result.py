@@ -4,9 +4,12 @@ from dataclasses import dataclass
 
 from .artifact import PrintArtifactV1, artifact_v1_stdout, parse_artifact_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
+from .effects import EffectSummaryV1, infer_effects_v1
 from .hir import HIRProgramV1, lower_surface_program_to_hir_v1
+from .resolve import ResolvedProgramV1, resolve_hir_program_v1
 from .subset import run_subset_program
 from .surface_ast import SurfaceProgramV1, parse_surface_program_v1
+from .typecheck import TypecheckedProgramV1, typecheck_program_v1
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,9 @@ class ParseArtifactV1:
 class CheckArtifactV1:
     raw_result: str
     ok: bool
+    resolved: ResolvedProgramV1
+    typed: TypecheckedProgramV1
+    effects: EffectSummaryV1
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,9 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
         )
 
     hir = lower_surface_program_to_hir_v1(surface_ast)
+    resolved = resolve_hir_program_v1(hir)
+    typed = typecheck_program_v1(resolved)
+    effects = infer_effects_v1(resolved)
 
     lower_raw = run_subset_program(frontend_source, entry="lower", args=[program_source])
     lower_artifact = parse_artifact_v1(lower_raw)
@@ -62,7 +71,7 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
 
     return CompileResultV1(
         parse=ParseArtifactV1(raw_ast=ast_raw, surface_ast=surface_ast),
-        check=CheckArtifactV1(raw_result="ok", ok=True),
+        check=CheckArtifactV1(raw_result="ok", ok=True, resolved=resolved, typed=typed, effects=effects),
         lower=LowerArtifactV1(raw_artifact=lower_raw, hir=hir, artifact=lower_artifact),
         compile_artifact=compile_artifact,
         raw_compile_artifact=compile_raw,
