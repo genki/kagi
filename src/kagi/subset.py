@@ -1120,8 +1120,6 @@ BUILTINS = {
     "is_identifier": builtin_is_identifier,
     "line_at": builtin_line_at,
     "line_count": builtin_line_count,
-    "lower_program_artifact": builtin_lower_program_artifact,
-    "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
     "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
@@ -1136,7 +1134,6 @@ BUILTINS = {
     "program_zero_arg_fn_call_ast": builtin_program_zero_arg_fn_call_ast,
     "quote": builtin_quote,
     "starts_with": builtin_starts_with,
-    "validate_program_ast": builtin_validate_program_ast,
     "trim": builtin_trim,
 }
 

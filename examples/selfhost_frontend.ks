@@ -1521,15 +1521,6 @@ fn try_parse_if_stmt(source) {
   }
 }
 
-fn try_lower_line_program(source) {
-  let ast = try_parse_line_program(source);
-  if eq(ast, "") {
-    return "";
-  } else {
-    return lower_ast(ast);
-  }
-}
-
 fn try_parse_current_shape(source) {
   let two_prints = try_parse_two_prints(source);
   if eq(two_prints, "") {
@@ -2066,14 +2057,6 @@ fn parse(source) {
   } else {
     return current;
   }
-}
-
-fn check_ast(ast) {
-  return validate_program_ast(ast);
-}
-
-fn lower_ast(ast) {
-  return lower_program_artifact(ast);
 }
 
 fn try_check_known(source) {

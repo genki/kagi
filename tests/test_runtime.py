@@ -915,6 +915,11 @@ class RuntimeTest(unittest.TestCase):
         self.assertNotIn("validate_program_ast", frontend)
         self.assertNotIn("lower_program_artifact", frontend)
 
+    def test_legacy_parse_check_lower_builtins_are_not_registered(self):
+        self.assertNotIn("parse_print_program", subset_module.BUILTINS)
+        self.assertNotIn("validate_program_ast", subset_module.BUILTINS)
+        self.assertNotIn("lower_program_artifact", subset_module.BUILTINS)
+
     def test_cli_selfhost_run_outputs_hello_world(self):
         root = Path(__file__).resolve().parents[1]
         proc = subprocess.run(
