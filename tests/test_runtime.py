@@ -250,6 +250,18 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(serialize_capir_fragment(capir), 'print "hello"\nprint "world"\n')
         self.assertEqual(execute_capir_fragment(capir).output, "hello\nworld")
 
+    def test_selfhost_frontend_supports_concat_print_expression(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
+        source = (root / "examples" / "hello_concat.ksrc").read_text(encoding="utf-8")
+        ast = run_subset_program(frontend, entry="parse", args=[source])
+        lowered = run_subset_program(frontend, entry="lower", args=[source])
+        self.assertEqual(
+            json.loads(ast),
+            {"kind": "program", "statements": [{"kind": "print", "text": "hello, world!"}]},
+        )
+        self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
+
     def test_selfhost_frontend_checks_invalid_source(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -310,6 +322,29 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(payload["value"], "hello\nworld")
         self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello","world"]}')
         self.assertEqual(payload["capir"]["serialized"], 'print "hello"\nprint "world"\n')
+
+    def test_cli_selfhost_run_outputs_concat_expression(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-run",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_concat.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
 
     def test_cli_selfhost_check_and_emit(self):
         root = Path(__file__).resolve().parents[1]

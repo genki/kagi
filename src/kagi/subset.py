@@ -273,16 +273,67 @@ def parse_print_program_source(text: str) -> dict | None:
             continue
         if not line.startswith("print "):
             return None
-        start = line.find('"')
-        if start == -1:
+        expr = line[len("print "):].strip()
+        literal = parse_tiny_print_expr(expr)
+        if literal is None:
             return None
-        end = line.rfind('"')
-        if end <= start:
-            return None
-        statements.append({"kind": "print", "text": line[start + 1:end]})
+        statements.append({"kind": "print", "text": literal})
     if not statements:
         return None
     return {"kind": "program", "statements": statements}
+
+
+def parse_tiny_print_expr(expr: str) -> str | None:
+    expr = expr.strip()
+    if expr.startswith('"') and expr.endswith('"') and len(expr) >= 2:
+        return expr[1:-1]
+    prefix = 'concat('
+    if expr.startswith(prefix) and expr.endswith(')'):
+        inner = expr[len(prefix):-1]
+        parts = split_concat_args(inner)
+        if parts is None or len(parts) != 2:
+            return None
+        left = parse_tiny_print_expr(parts[0])
+        right = parse_tiny_print_expr(parts[1])
+        if left is None or right is None:
+            return None
+        return left + right
+    return None
+
+
+def split_concat_args(text: str) -> list[str] | None:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            current.append(ch)
+            escape = False
+            continue
+        if ch == "\\":
+            current.append(ch)
+            escape = True
+            continue
+        if ch == '"':
+            current.append(ch)
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                parts.append("".join(current).strip())
+                current = []
+                continue
+        current.append(ch)
+    if in_string or depth != 0:
+        return None
+    parts.append("".join(current).strip())
+    return parts
 
 
 def builtin_parse_print_program(source: object) -> str:
