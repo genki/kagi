@@ -28,7 +28,9 @@ from kagi.ir import serialize_capir_fragment, serialize_program_ir
 from kagi.kir import (
     KIRCallV0,
     KIRConcatV0,
+    KIREqV0,
     KIRFunctionV0,
+    KIRIfStmtV0,
     KIRLetV0,
     KIRPrintV0,
     KIRProgramV0,
@@ -386,6 +388,34 @@ class RuntimeTest(unittest.TestCase):
             result = execute_kir_program_v0(program)
         self.assertEqual(result.output, "hello")
         self.assertEqual(generic_spy.call_count, 1)
+
+    def test_execute_kir_program_helper_does_not_call_python_kir_runtime_for_closed_let_print_program(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRLetV0(name="greeting", expr=KIRStringV0(value="hello")),
+                KIRPrintV0(expr=KIRVarV0(name="greeting")),
+            ],
+            functions=[],
+        )
+        with patch("kagi.kir_runtime.execute_kir_program_v0", side_effect=AssertionError("closed KIR helper should not use python kir runtime")):
+            actual = execute_kir_program_result(program).output
+        self.assertEqual(actual, "hello")
+
+    def test_execute_kir_program_helper_does_not_call_python_kir_runtime_for_closed_if_program(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRLetV0(name="greeting", expr=KIRConcatV0(left=KIRStringV0(value="hello, "), right=KIRStringV0(value="world!"))),
+                KIRIfStmtV0(
+                    condition=KIREqV0(left=KIRVarV0(name="greeting"), right=KIRStringV0(value="hello, world!")),
+                    then_body=[KIRPrintV0(expr=KIRVarV0(name="greeting"))],
+                    else_body=[KIRPrintV0(expr=KIRStringV0(value="no"))],
+                ),
+            ],
+            functions=[],
+        )
+        with patch("kagi.kir_runtime.execute_kir_program_v0", side_effect=AssertionError("closed KIR helper should not use python kir runtime")):
+            actual = execute_kir_program_result(program).output
+        self.assertEqual(actual, "hello, world!")
 
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """
