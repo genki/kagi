@@ -9,7 +9,6 @@ from kagi.capir_runtime import capir_fragment_from_artifact, execute_capir_artif
 from kagi.diagnostics import DiagnosticError
 from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from kagi.ir import serialize_capir_fragment, serialize_program_ir
-from kagi.selfhost import lower_tiny_program, lower_tiny_program_to_capir, parse_tiny_program_ast_json, render_tiny_program
 import kagi.subset as subset_module
 from kagi.subset import parse_subset_program, run_subset_program
 from kagi.runtime import (
@@ -359,14 +358,10 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(checked, "ok")
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello, world!"]})
         self.assertEqual(json.loads(compiled), {"kind": "print_many", "texts": ["hello, world!"]})
-
-        tiny_program = parse_tiny_program_ast_json(ast)
-        self.assertEqual(lower_tiny_program(tiny_program), lowered)
-        self.assertEqual(render_tiny_program(tiny_program), "hello, world!")
-        capir = lower_tiny_program_to_capir(tiny_program)
+        capir = capir_fragment_from_artifact(lowered)
         self.assertEqual(capir.effect, "print")
         self.assertEqual(serialize_capir_fragment(capir), 'print "hello, world!"\n')
-        self.assertEqual(execute_capir_fragment(capir).output, "hello, world!")
+        self.assertEqual(execute_capir_artifact(lowered).output, "hello, world!")
 
     def test_selfhost_frontend_supports_multiple_print_statements(self):
         root = Path(__file__).resolve().parents[1]
@@ -389,11 +384,9 @@ class RuntimeTest(unittest.TestCase):
         )
         self.assertEqual(checked, "ok")
         self.assertEqual(json.loads(lowered), {"kind": "print_many", "texts": ["hello", "world"]})
-
-        tiny_program = parse_tiny_program_ast_json(ast)
-        capir = lower_tiny_program_to_capir(tiny_program)
+        capir = capir_fragment_from_artifact(lowered)
         self.assertEqual(serialize_capir_fragment(capir), 'print "hello"\nprint "world"\n')
-        self.assertEqual(execute_capir_fragment(capir).output, "hello\nworld")
+        self.assertEqual(execute_capir_artifact(lowered).output, "hello\nworld")
 
     def test_selfhost_frontend_supports_concat_print_expression(self):
         root = Path(__file__).resolve().parents[1]
