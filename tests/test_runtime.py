@@ -275,6 +275,15 @@ class RuntimeTest(unittest.TestCase):
             },
         )
 
+    def test_subset_builtins_print_many_artifact_shape(self):
+        source = """
+        fn main() {
+            return print_many_artifact("hello, world!");
+        }
+        """
+        value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(json.loads(value), {"kind": "print_many", "texts": ["hello, world!"]})
+
     def test_selfhost_frontend_emits_hello_world(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
@@ -704,6 +713,75 @@ class RuntimeTest(unittest.TestCase):
         payload = __import__("json").loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["value"], "hello, world!")
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+
+    def test_cli_selfhost_emit_outputs_selfhosted_single_print_artifact(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-emit",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+
+    def test_cli_selfhost_emit_outputs_selfhosted_let_print_artifact(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-emit",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_let_string.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
+
+    def test_cli_selfhost_emit_outputs_selfhosted_function_call_artifact(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-emit",
+                "--json",
+                str(root / "examples" / "selfhost_frontend.ks"),
+                str(root / "examples" / "hello_arg_fn.ksrc"),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        payload = __import__("json").loads(proc.stdout)
+        self.assertTrue(payload["ok"])
         self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["hello, world!"]}')
 
     def test_cli_selfhost_run_outputs_function_call(self):

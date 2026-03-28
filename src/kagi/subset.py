@@ -369,6 +369,12 @@ def builtin_program_single_arg_fn_call_ast(
     )
 
 
+def builtin_print_many_artifact(text: object) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    return json.dumps({"kind": "print_many", "texts": [text]}, ensure_ascii=False, separators=(",", ":"))
+
+
 def builtin_program_text(ast: object) -> str:
     if not isinstance(ast, str):
         return ""
@@ -880,6 +886,7 @@ BUILTINS = {
     "lower_program_artifact": builtin_lower_program_artifact,
     "parse_print_program": builtin_parse_print_program,
     "print_ast": builtin_print_ast,
+    "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
     "program_single_arg_fn_call_ast": builtin_program_single_arg_fn_call_ast,
     "program_let_print_ast": builtin_program_let_print_ast,
