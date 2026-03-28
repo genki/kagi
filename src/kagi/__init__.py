@@ -1,17 +1,16 @@
+from .frontend import BootstrapProgram, execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+from .ir import Action, ProgramIR, action_to_string, serialize_program_ir
 from .runtime import (
-    Action,
     Cell,
     ExecutionResult,
     Heap,
     KagiRuntimeError,
     LoanState,
     apply_action,
-    execute_program,
+    execute_program_ir,
     export_owner,
-    parse_program,
     well_formed,
 )
-from .frontend import BootstrapProgram, execute_bootstrap_program, parse_bootstrap_program
 
 __all__ = [
     "Action",
@@ -21,11 +20,14 @@ __all__ = [
     "Heap",
     "KagiRuntimeError",
     "LoanState",
+    "ProgramIR",
+    "action_to_string",
     "apply_action",
     "execute_bootstrap_program",
-    "execute_program",
+    "execute_program_ir",
     "export_owner",
     "parse_bootstrap_program",
-    "parse_program",
+    "parse_core_program",
+    "serialize_program_ir",
     "well_formed",
 ]

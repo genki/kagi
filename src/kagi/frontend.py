@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .ir import Action, ProgramIR
 from .runtime import (
-    Action,
     Cell,
-    ExecutionResult,
     Heap,
     KagiRuntimeError,
     LoanState,
-    apply_action,
-    export_owner,
-    well_formed,
+    execute_program_ir,
+    well_formed
 )
 
 
@@ -23,10 +21,54 @@ class ExportAssertion:
 
 @dataclass(frozen=True)
 class BootstrapProgram:
-    heap: Heap
+    program: ProgramIR
     owner_ids: dict[str, int]
-    actions: list[Action]
     assertions: list[tuple[int, ExportAssertion]]
+
+
+def parse_core_program(source: str) -> ProgramIR:
+    heap: Heap = {}
+    actions: list[Action] = []
+
+    for lineno, raw_line in enumerate(source.splitlines(), start=1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        head = parts[0]
+
+        try:
+            if head == "owner":
+                owner = int(parts[1])
+                alive = parse_alive(parts[2])
+                loan = parse_loan(parts[3:])
+                heap[owner] = Cell(alive=alive, loan=loan)
+                continue
+
+            if head == "borrow_mut":
+                actions.append(Action("borrow_mut", int(parts[1]), int(parts[2])))
+                continue
+            if head == "end_mut":
+                actions.append(Action("end_mut", int(parts[1]), int(parts[2])))
+                continue
+            if head == "borrow_shared":
+                actions.append(Action("borrow_shared", int(parts[1]), int(parts[2])))
+                continue
+            if head == "end_shared":
+                actions.append(Action("end_shared", int(parts[1]), int(parts[2])))
+                continue
+            if head == "drop":
+                actions.append(Action("drop", int(parts[1])))
+                continue
+        except (IndexError, ValueError) as exc:
+            raise KagiRuntimeError(f"parse error on line {lineno}: {raw_line}") from exc
+
+        raise KagiRuntimeError(f"unknown statement on line {lineno}: {raw_line}")
+
+    if not well_formed(heap):
+        raise KagiRuntimeError("initial heap is not well-formed")
+
+    return ProgramIR(heap=heap, actions=actions)
 
 
 def parse_bootstrap_program(source: str) -> BootstrapProgram:
@@ -94,7 +136,11 @@ def parse_bootstrap_program(source: str) -> BootstrapProgram:
     if not well_formed(heap):
         raise KagiRuntimeError("initial heap is not well-formed")
 
-    return BootstrapProgram(heap=heap, owner_ids=owner_ids, actions=actions, assertions=assertions)
+    return BootstrapProgram(
+        program=ProgramIR(heap=heap, actions=actions),
+        owner_ids=owner_ids,
+        assertions=assertions,
+    )
 
 
 def parse_alive(token: str) -> bool:
@@ -114,6 +160,18 @@ def parse_named_loan(tokens: list[str], key_values: dict[str, int], epoch_values
         return LoanState.mut(resolve_symbol(tokens[1], key_values))
     if tokens[0] == "shared":
         return LoanState.shared(resolve_symbol(tokens[1], epoch_values), int(tokens[2]))
+    raise KagiRuntimeError(f"invalid loan state: {' '.join(tokens)}")
+
+
+def parse_loan(tokens: list[str]) -> LoanState:
+    if not tokens:
+        raise KagiRuntimeError("missing loan state")
+    if tokens[0] == "idle":
+        return LoanState.idle()
+    if tokens[0] == "mut":
+        return LoanState.mut(int(tokens[1]))
+    if tokens[0] == "shared":
+        return LoanState.shared(int(tokens[1]), int(tokens[2]))
     raise KagiRuntimeError(f"invalid loan state: {' '.join(tokens)}")
 
 
@@ -139,25 +197,18 @@ def normalize_export(tokens: list[str], epoch_values: dict[str, int]) -> str:
     raise KagiRuntimeError(f"invalid export expectation: {' '.join(tokens)}")
 
 
-def execute_bootstrap_program(source: str) -> ExecutionResult:
+def execute_bootstrap_program(source: str):
     program = parse_bootstrap_program(source)
-    trace = [program.heap]
-    current = program.heap
+    result = execute_program_ir(program.program)
 
-    for index, action in enumerate(program.actions, start=1):
-        current = apply_action(current, action)
-        if not well_formed(current):
-            raise KagiRuntimeError("heap became ill-formed")
-        trace.append(current)
-
+    for index, heap in enumerate(result.trace[1:], start=1):
         for assertion_index, assertion in program.assertions:
             if assertion_index != index:
                 continue
             owner_id = program.owner_ids[assertion.owner_name]
-            actual = export_owner(current, owner_id)
+            actual = heap[owner_id].loan.export()
             if actual != assertion.expected:
                 raise KagiRuntimeError(
                     f"assert_export failed for {assertion.owner_name}: expected {assertion.expected}, got {actual}"
                 )
-
-    return ExecutionResult(heap=current, trace=trace, actions=program.actions)
+    return result

@@ -4,8 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
-from .frontend import execute_bootstrap_program, parse_bootstrap_program
-from .runtime import ExecutionResult, action_to_string, execute_program, export_owner, parse_program, well_formed
+from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+from .ir import action_to_string
+from .runtime import ExecutionResult, execute_program_ir, export_owner, well_formed
 
 
 def heap_to_json(result: ExecutionResult) -> dict:
@@ -65,24 +66,24 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "run":
         source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program(source)
+        result = execute_program_ir(parse_core_program(source))
         print(json.dumps(heap_to_json(result), ensure_ascii=False, indent=2))
         return
 
     if args.command == "trace":
         source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program(source)
+        result = execute_program_ir(parse_core_program(source))
         print(json.dumps(trace_to_json(result), ensure_ascii=False, indent=2))
         return
 
     if args.command == "check":
         source = Path(args.file).read_text(encoding="utf-8")
-        heap, actions = parse_program(source)
-        result = execute_program(source)
+        program = parse_core_program(source)
+        result = execute_program_ir(program)
         payload = {
             "ok": True,
-            "initial_well_formed": well_formed(heap),
-            "action_count": len(actions),
+            "initial_well_formed": well_formed(program.heap),
+            "action_count": len(program.actions),
             "final_well_formed": well_formed(result.heap),
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -90,7 +91,7 @@ def main() -> None:
 
     if args.command == "exports":
         source = Path(args.file).read_text(encoding="utf-8")
-        result = execute_program(source)
+        result = execute_program_ir(parse_core_program(source))
         payload = {
             str(owner): export_owner(result.heap, owner)
             for owner in sorted(result.heap.keys())
@@ -105,7 +106,7 @@ def main() -> None:
         payload = {
             "ok": True,
             "owners": sorted(program.owner_ids.keys()),
-            "action_count": len(program.actions),
+            "action_count": len(program.program.actions),
             "assertion_count": len(program.assertions),
             "final_well_formed": well_formed(result.heap),
         }

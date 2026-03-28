@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Literal
 
+from .ir import Action, ProgramIR
+
 
 class KagiRuntimeError(RuntimeError):
     pass
@@ -45,15 +47,6 @@ class Cell:
 
 
 Heap = dict[int, Cell]
-
-
-@dataclass(frozen=True)
-class Action:
-    kind: Literal["borrow_mut", "end_mut", "borrow_shared", "end_shared", "drop"]
-    owner: int
-    value: int | None = None
-
-
 @dataclass(frozen=True)
 class ExecutionResult:
     heap: Heap
@@ -137,84 +130,15 @@ def require_value(action: Action) -> int:
     return action.value
 
 
-def parse_program(source: str) -> tuple[Heap, list[Action]]:
-    heap: Heap = {}
-    actions: list[Action] = []
-
-    for lineno, raw_line in enumerate(source.splitlines(), start=1):
-        line = raw_line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        parts = line.split()
-        head = parts[0]
-
-        try:
-            if head == "owner":
-                owner = int(parts[1])
-                alive = parse_alive(parts[2])
-                loan = parse_loan(parts[3:])
-                heap[owner] = Cell(alive=alive, loan=loan)
-                continue
-
-            if head == "borrow_mut":
-                actions.append(Action("borrow_mut", int(parts[1]), int(parts[2])))
-                continue
-            if head == "end_mut":
-                actions.append(Action("end_mut", int(parts[1]), int(parts[2])))
-                continue
-            if head == "borrow_shared":
-                actions.append(Action("borrow_shared", int(parts[1]), int(parts[2])))
-                continue
-            if head == "end_shared":
-                actions.append(Action("end_shared", int(parts[1]), int(parts[2])))
-                continue
-            if head == "drop":
-                actions.append(Action("drop", int(parts[1])))
-                continue
-        except (IndexError, ValueError) as exc:
-            raise KagiRuntimeError(f"parse error on line {lineno}: {raw_line}") from exc
-
-        raise KagiRuntimeError(f"unknown statement on line {lineno}: {raw_line}")
-
-    if not well_formed(heap):
+def execute_program_ir(program: ProgramIR) -> ExecutionResult:
+    if not well_formed(program.heap):
         raise KagiRuntimeError("initial heap is not well-formed")
 
-    return heap, actions
-
-
-def parse_alive(token: str) -> bool:
-    if token == "alive":
-        return True
-    if token == "dead":
-        return False
-    raise KagiRuntimeError(f"invalid alive state: {token}")
-
-
-def parse_loan(tokens: list[str]) -> LoanState:
-    if not tokens:
-        raise KagiRuntimeError("missing loan state")
-    if tokens[0] == "idle":
-        return LoanState.idle()
-    if tokens[0] == "mut":
-        return LoanState.mut(int(tokens[1]))
-    if tokens[0] == "shared":
-        return LoanState.shared(int(tokens[1]), int(tokens[2]))
-    raise KagiRuntimeError(f"invalid loan state: {' '.join(tokens)}")
-
-
-def execute_program(source: str) -> ExecutionResult:
-    heap, actions = parse_program(source)
-    trace = [heap]
-    current = heap
-    for action in actions:
+    trace = [program.heap]
+    current = program.heap
+    for action in program.actions:
         current = apply_action(current, action)
         if not well_formed(current):
             raise KagiRuntimeError("heap became ill-formed")
         trace.append(current)
-    return ExecutionResult(heap=current, trace=trace, actions=actions)
-
-
-def action_to_string(action: Action) -> str:
-    if action.value is None:
-        return f"{action.kind} {action.owner}"
-    return f"{action.kind} {action.owner} {action.value}"
+    return ExecutionResult(heap=current, trace=trace, actions=program.actions)

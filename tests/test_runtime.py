@@ -1,16 +1,18 @@
 import unittest
+from pathlib import Path
 
-from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program
+from kagi.frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+from kagi.ir import serialize_program_ir
 from kagi.runtime import (
-    Action,
     Cell,
     KagiRuntimeError,
     LoanState,
     apply_action,
-    execute_program,
     export_owner,
+    execute_program_ir,
     well_formed,
 )
+from kagi.ir import Action
 
 
 class RuntimeTest(unittest.TestCase):
@@ -47,22 +49,34 @@ class RuntimeTest(unittest.TestCase):
         end_mut 1 7
         drop 1
         """
-        result = execute_program(source)
+        result = execute_program_ir(parse_core_program(source))
         self.assertEqual(result.heap[0].loan, LoanState.shared(9, 0))
         self.assertFalse(result.heap[1].alive)
         self.assertEqual(export_owner(result.heap, 0), "shared 9")
         self.assertEqual(export_owner(result.heap, 1), "idle")
 
     def test_execution_result_keeps_actions(self):
-        result = execute_program(
+        result = execute_program_ir(parse_core_program(
             """
             owner 0 alive idle
             borrow_mut 0 3
             end_mut 0 3
             """
-        )
+        ))
         self.assertEqual(len(result.actions), 2)
         self.assertEqual(result.actions[0].kind, "borrow_mut")
+
+    def test_capir_roundtrip_for_core_example(self):
+        source = """
+        owner 0 alive idle
+        owner 1 alive idle
+        borrow_shared 0 9
+        end_shared 0 9
+        """
+        program = parse_core_program(source)
+        serialized = serialize_program_ir(program)
+        reparsed = parse_core_program(serialized)
+        self.assertEqual(serialized, serialize_program_ir(reparsed))
 
     def test_bootstrap_program_supports_named_symbols_and_assertions(self):
         program = parse_bootstrap_program(
@@ -79,8 +93,32 @@ class RuntimeTest(unittest.TestCase):
             """
         )
         self.assertEqual(program.owner_ids["cell"], 0)
-        self.assertEqual(len(program.actions), 4)
+        self.assertEqual(len(program.program.actions), 4)
         self.assertEqual(len(program.assertions), 2)
+
+    def test_capir_roundtrip_for_bootstrap_example(self):
+        source = """
+        let epoch e0 = 10
+        owner cell alive idle
+        borrow_shared cell e0
+        """
+        program = parse_bootstrap_program(source)
+        serialized = serialize_program_ir(program.program)
+        reparsed = parse_core_program(serialized)
+        self.assertEqual(serialized, serialize_program_ir(reparsed))
+
+    def test_examples_roundtrip_via_capir(self):
+        root = Path(__file__).resolve().parents[1]
+
+        core_source = (root / "examples" / "basic.kagi").read_text(encoding="utf-8")
+        core_program = parse_core_program(core_source)
+        core_serialized = serialize_program_ir(core_program)
+        self.assertEqual(core_serialized, serialize_program_ir(parse_core_program(core_serialized)))
+
+        bootstrap_source = (root / "examples" / "bootstrap.kg").read_text(encoding="utf-8")
+        bootstrap_program = parse_bootstrap_program(bootstrap_source)
+        bootstrap_serialized = serialize_program_ir(bootstrap_program.program)
+        self.assertEqual(bootstrap_serialized, serialize_program_ir(parse_core_program(bootstrap_serialized)))
 
     def test_bootstrap_execution_runs_and_checks_assertions(self):
         result = execute_bootstrap_program(

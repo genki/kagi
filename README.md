@@ -2,6 +2,18 @@
 
 `KAGI_design.md` と `KAGI_core.lean` にある最小核を、そのまま実行できる core runtime です。
 
+## CapIR v0
+
+現在の lowering target は `CapIR v0` です。
+
+- 定義: `src/kagi/ir.py`
+- `frontend.py` は source を `ProgramIR` に lower する
+- `runtime.py` は `ProgramIR` を実行するだけ
+- `cli.py` は I/O と表示だけを持つ
+- `assert_export` は IR 命令ではなく bootstrap 側の meta assertion
+
+この境界を self-hosting 前の固定足場として扱います。
+
 ## 対応範囲
 
 - owner / cell / heap
