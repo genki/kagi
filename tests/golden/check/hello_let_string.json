@@ -1,0 +1,1 @@
+{"ok":true,"effects":{"program":["print"],"functions":{}},"metadata":{"contract_version":"front-half-v1","frontend_entry":"pipeline"},"hir":{"kind":"hir_program","functions":[],"statements":[{"kind":"let","name":"greeting","expr":{"kind":"string","value":"hello, world!"}},{"kind":"print","expr":{"kind":"var","name":"greeting"}}]}}

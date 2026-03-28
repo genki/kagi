@@ -17,7 +17,12 @@ VALID_CASES = [
     "hello",
     "hello_concat",
     "hello_let",
+    "hello_print_concat",
+    "hello_let_string",
+    "hello_let_concat",
+    "hello_twice",
     "hello_if",
+    "hello_if_stmt",
     "hello_fn",
     "hello_arg_fn",
 ]

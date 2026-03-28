@@ -138,13 +138,11 @@ def main() -> None:
     selfhost_run_parser = subparsers.add_parser("selfhost-run")
     selfhost_run_parser.add_argument("frontend")
     selfhost_run_parser.add_argument("source")
-    selfhost_run_parser.add_argument("--entry", default="compile")
     add_json_flag(selfhost_run_parser)
 
     selfhost_check_parser = subparsers.add_parser("selfhost-check")
     selfhost_check_parser.add_argument("frontend")
     selfhost_check_parser.add_argument("source")
-    selfhost_check_parser.add_argument("--entry", default="check")
     add_json_flag(selfhost_check_parser)
 
     selfhost_parse_parser = subparsers.add_parser("selfhost-parse")
@@ -156,13 +154,11 @@ def main() -> None:
     selfhost_emit_parser = subparsers.add_parser("selfhost-emit")
     selfhost_emit_parser.add_argument("frontend")
     selfhost_emit_parser.add_argument("source")
-    selfhost_emit_parser.add_argument("--entry", default="lower")
     add_json_flag(selfhost_emit_parser)
 
     selfhost_capir_parser = subparsers.add_parser("selfhost-capir")
     selfhost_capir_parser.add_argument("frontend")
     selfhost_capir_parser.add_argument("source")
-    selfhost_capir_parser.add_argument("--entry", default="compile")
     add_json_flag(selfhost_capir_parser)
 
     selfhost_freeze_parser = subparsers.add_parser("selfhost-freeze")
@@ -261,7 +257,7 @@ def main() -> None:
                 emit_payload(
                     {
                         "ok": True,
-                        "entry": args.entry,
+                        "entry": compiled.metadata.frontend_entry,
                         "metadata": {
                             "contract_version": compiled.metadata.contract_version,
                             "frontend_entry": compiled.metadata.frontend_entry,
@@ -288,7 +284,7 @@ def main() -> None:
             emit_payload(
                 {
                     "ok": True,
-                    "entry": args.entry,
+                    "entry": compiled.metadata.frontend_entry,
                     "metadata": {
                         "contract_version": compiled.metadata.contract_version,
                         "frontend_entry": compiled.metadata.frontend_entry,
@@ -308,7 +304,7 @@ def main() -> None:
                 emit_payload(
                     {
                         "ok": False,
-                        "entry": args.entry,
+                        "entry": "pipeline",
                         "source": str(args.source),
                         "ast": None,
                         "value": exc.diagnostic.message,
@@ -348,7 +344,7 @@ def main() -> None:
             emit_payload(
                 {
                     "ok": True,
-                    "entry": args.entry,
+                    "entry": compiled.metadata.frontend_entry,
                     "metadata": {
                         "contract_version": compiled.metadata.contract_version,
                         "frontend_entry": compiled.metadata.frontend_entry,
@@ -372,7 +368,7 @@ def main() -> None:
             emit_payload(
                 {
                     "ok": True,
-                    "entry": args.entry,
+                    "entry": compiled.metadata.frontend_entry,
                     "metadata": {
                         "contract_version": compiled.metadata.contract_version,
                         "frontend_entry": compiled.metadata.frontend_entry,
