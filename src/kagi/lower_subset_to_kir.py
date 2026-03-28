@@ -5,6 +5,8 @@ from .kir_runtime import execute_kir_entry_v0
 from .kir import (
     KIRBoolV0,
     KIRCallExprV0,
+    KIRConcatV0,
+    KIREqV0,
     KIRExprStmtV0,
     KIRExprV0,
     KIRFunctionV0,
@@ -69,6 +71,16 @@ def lower_subset_expr_to_kir_v0(expr: Expr) -> KIRExprV0:
     if isinstance(expr, Variable):
         return KIRVarV0(name=expr.name)
     if isinstance(expr, Call):
+        if expr.callee == "concat" and len(expr.args) == 2:
+            return KIRConcatV0(
+                left=lower_subset_expr_to_kir_v0(expr.args[0]),
+                right=lower_subset_expr_to_kir_v0(expr.args[1]),
+            )
+        if expr.callee == "eq" and len(expr.args) == 2:
+            return KIREqV0(
+                left=lower_subset_expr_to_kir_v0(expr.args[0]),
+                right=lower_subset_expr_to_kir_v0(expr.args[1]),
+            )
         return KIRCallExprV0(callee=expr.callee, args=[lower_subset_expr_to_kir_v0(arg) for arg in expr.args])
     raise TypeError(f"unsupported subset expr: {expr!r}")
 

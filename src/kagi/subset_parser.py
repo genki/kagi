@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .diagnostics import Diagnostic, DiagnosticError
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ParamDef, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
-from .subset_lexer import Token, tokenize
+
+if TYPE_CHECKING:
+    from .subset_lexer import Token
 
 
 class Parser:
     def __init__(self, source: str):
+        from .subset_lexer import tokenize
+
         self.source = source
         self.lines = source.splitlines()
         self.tokens = tokenize(source)

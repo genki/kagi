@@ -244,6 +244,27 @@ class RuntimeTest(unittest.TestCase):
         actual = run_subset_program_via_kir(source, entry="main", args=["world!"])
         self.assertEqual(actual, expected)
 
+    def test_subset_program_via_kir_does_not_need_concat_or_eq_builtins(self):
+        source = """
+        fn main(name) {
+            let prefix = "hello, ";
+            let greeting = concat(prefix, name);
+            if eq(greeting, "hello, world!") {
+                return greeting;
+            } else {
+                return "no";
+            }
+        }
+        """
+        patched_builtins = {
+            **subset_module.BUILTINS,
+            "concat": lambda *_args: (_ for _ in ()).throw(AssertionError("concat builtin should not be used by subset KIR path")),
+            "eq": lambda *_args: (_ for _ in ()).throw(AssertionError("eq builtin should not be used by subset KIR path")),
+        }
+        with patch("kagi.lower_subset_to_kir.SUBSET_KIR_BUILTINS", patched_builtins):
+            actual = run_subset_program_via_kir(source, entry="main", args=["world!"])
+        self.assertEqual(actual, "hello, world!")
+
     def test_selfhost_pipeline_via_kir_matches_interpreter(self):
         root = Path(__file__).resolve().parents[1]
         frontend = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")
