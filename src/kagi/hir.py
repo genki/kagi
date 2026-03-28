@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+
+from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 
 from .surface_ast import (
     SurfaceBoolV1,
@@ -160,6 +163,148 @@ def inspect_hir_program_v1(program: HIRProgramV1) -> dict[str, object]:
         ],
         "statements": [inspect_hir_stmt_v1(stmt) for stmt in program.statements],
     }
+
+
+def hir_program_v1_to_json(program: HIRProgramV1) -> str:
+    return json.dumps(inspect_hir_program_v1(program), ensure_ascii=False, separators=(",", ":"))
+
+
+def parse_hir_program_v1(raw: object) -> HIRProgramV1:
+    if not isinstance(raw, str):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir program must be a string")
+        )
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", f"invalid hir json: {exc.msg}")
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("kind") != "hir_program":
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "unsupported hir payload")
+        )
+    functions = payload.get("functions", [])
+    statements = payload.get("statements", [])
+    if not isinstance(functions, list) or not isinstance(statements, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir program requires functions and statements")
+        )
+    return HIRProgramV1(
+        functions=[parse_hir_function_v1(item) for item in functions],
+        statements=[parse_hir_stmt_v1(item) for item in statements],
+    )
+
+
+def parse_hir_function_v1(raw: object) -> HIRFunctionV1:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir function must be an object")
+        )
+    name = raw.get("name")
+    params = raw.get("params", [])
+    body = raw.get("body")
+    if not isinstance(name, str) or not isinstance(params, list) or not isinstance(body, list):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir function requires name, params, and body")
+        )
+    if not all(isinstance(param, str) and param for param in params):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir params must be strings")
+        )
+    return HIRFunctionV1(
+        name=name,
+        params=list(params),
+        body=[parse_hir_stmt_v1(item) for item in body],
+    )
+
+
+def parse_hir_stmt_v1(raw: object) -> HIRStmtV1:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir statement must be an object")
+        )
+    kind = raw.get("kind")
+    if kind == "print":
+        return HIRPrintStmtV1(expr=parse_hir_expr_v1(raw.get("expr")))
+    if kind == "let":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir let requires name")
+            )
+        return HIRLetStmtV1(name=name, expr=parse_hir_expr_v1(raw.get("expr")))
+    if kind == "if_stmt":
+        then_body = raw.get("then_body")
+        else_body = raw.get("else_body")
+        if not isinstance(then_body, list) or not isinstance(else_body, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir if requires bodies")
+            )
+        return HIRIfStmtV1(
+            condition=parse_hir_expr_v1(raw.get("condition")),
+            then_body=[parse_hir_stmt_v1(item) for item in then_body],
+            else_body=[parse_hir_stmt_v1(item) for item in else_body],
+        )
+    if kind == "call":
+        name = raw.get("name")
+        args = raw.get("args", [])
+        if not isinstance(name, str) or not isinstance(args, list):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir call requires name and args")
+            )
+        return HIRCallStmtV1(name=name, args=[parse_hir_expr_v1(item) for item in args])
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("hir", "unsupported hir statement")
+    )
+
+
+def parse_hir_expr_v1(raw: object) -> HIRExprV1:
+    if not isinstance(raw, dict):
+        raise DiagnosticError(
+            diagnostic_from_runtime_error("hir", "hir expression must be an object")
+        )
+    kind = raw.get("kind")
+    if kind == "string":
+        value = raw.get("value")
+        if not isinstance(value, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir string requires value")
+            )
+        return HIRStringV1(value=value)
+    if kind == "bool":
+        value = raw.get("value")
+        if not isinstance(value, bool):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir bool requires value")
+            )
+        return HIRBoolV1(value=value)
+    if kind == "var":
+        name = raw.get("name")
+        if not isinstance(name, str):
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("hir", "hir var requires name")
+            )
+        return HIRVarV1(name=name)
+    if kind == "concat":
+        return HIRConcatV1(
+            left=parse_hir_expr_v1(raw.get("left")),
+            right=parse_hir_expr_v1(raw.get("right")),
+        )
+    if kind == "eq":
+        return HIREqV1(
+            left=parse_hir_expr_v1(raw.get("left")),
+            right=parse_hir_expr_v1(raw.get("right")),
+        )
+    if kind == "if":
+        return HIRIfExprV1(
+            condition=parse_hir_expr_v1(raw.get("condition")),
+            then_expr=parse_hir_expr_v1(raw.get("then")),
+            else_expr=parse_hir_expr_v1(raw.get("else")),
+        )
+    raise DiagnosticError(
+        diagnostic_from_runtime_error("hir", "unsupported hir expression")
+    )
 
 
 def lower_surface_program_to_hir_v1(program: SurfaceProgramV1) -> HIRProgramV1:

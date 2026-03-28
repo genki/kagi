@@ -5,16 +5,19 @@ import json
 
 from .artifact import PrintArtifactV1, artifact_v1_to_json, parse_artifact_v1
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
+from .hir import HIRProgramV1, hir_program_v1_to_json, parse_hir_program_v1
 from .surface_ast import SurfaceProgramV1, parse_surface_program_v1
 
 
 @dataclass(frozen=True)
 class SelfhostPipelineBundleV1:
     raw_ast: str
+    raw_hir: str
     raw_check: str
     raw_artifact: str
     raw_compile: str
     surface_ast: SurfaceProgramV1
+    hir: HIRProgramV1
     artifact: PrintArtifactV1
     compile_artifact: PrintArtifactV1
 
@@ -46,6 +49,7 @@ def parse_selfhost_pipeline_bundle_v1(bundle_raw: object) -> SelfhostPipelineBun
         )
 
     raw_ast = _bundle_value_to_raw(bundle.get("ast"))
+    raw_hir = _bundle_value_to_raw(bundle.get("hir"))
     raw_check = _bundle_value_to_raw(bundle.get("check"))
     raw_artifact = _bundle_value_to_raw(bundle.get("artifact"))
     raw_compile = _bundle_value_to_raw(bundle.get("compile"))
@@ -64,10 +68,12 @@ def parse_selfhost_pipeline_bundle_v1(bundle_raw: object) -> SelfhostPipelineBun
 
     return SelfhostPipelineBundleV1(
         raw_ast=raw_ast,
+        raw_hir=raw_hir,
         raw_check=raw_check,
         raw_artifact=raw_artifact,
         raw_compile=raw_compile,
         surface_ast=parse_surface_program_v1(raw_ast),
+        hir=parse_hir_program_v1(raw_hir),
         artifact=artifact,
         compile_artifact=compile_artifact,
     )
@@ -78,6 +84,7 @@ def selfhost_pipeline_bundle_v1_to_json(bundle: SelfhostPipelineBundleV1) -> str
         {
             "kind": "pipeline_bundle",
             "ast": json.loads(bundle.raw_ast),
+            "hir": json.loads(hir_program_v1_to_json(bundle.hir)),
             "check": bundle.raw_check,
             "artifact": json.loads(artifact_v1_to_json(bundle.artifact)),
             "compile": json.loads(artifact_v1_to_json(bundle.compile_artifact)),

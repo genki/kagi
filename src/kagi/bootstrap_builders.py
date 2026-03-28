@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 
+from .diagnostics import DiagnosticError
+from .hir import hir_program_v1_to_json, lower_surface_program_to_hir_v1
+from .surface_ast import parse_surface_program_v1
 
 def builtin_print_ast(text: object) -> str:
     if not isinstance(text, str):
@@ -324,10 +327,22 @@ def builtin_program_text(ast: object) -> str:
     return text if isinstance(text, str) else ""
 
 
+def builtin_program_ast_to_hir(ast: object) -> str:
+    if not isinstance(ast, str):
+        return ""
+    try:
+        surface = parse_surface_program_v1(ast)
+        hir = lower_surface_program_to_hir_v1(surface)
+    except DiagnosticError:
+        return ""
+    return hir_program_v1_to_json(hir)
+
+
 BOOTSTRAP_BUILTINS = {
     "print_ast": builtin_print_ast,
     "print_many_artifact": builtin_print_many_artifact,
     "program_ast": builtin_program_ast,
+    "program_ast_to_hir": builtin_program_ast_to_hir,
     "program_if_expr_print_ast": builtin_program_if_expr_print_ast,
     "program_if_stmt_ast": builtin_program_if_stmt_ast,
     "program_print_concat_ast": builtin_program_print_concat_ast,

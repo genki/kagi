@@ -66,7 +66,7 @@ def compile_source_v1(frontend_source: str, program_source: str) -> CompileResul
     bundle = parse_selfhost_pipeline_bundle_v1(bundle_raw)
     surface_ast = bundle.surface_ast
 
-    hir = lower_surface_program_to_hir_v1(surface_ast)
+    hir = bundle.hir
     resolved = resolve_hir_program_v1(hir)
     typed = typecheck_program_v1(resolved)
     effects = infer_effects_v1(resolved)
