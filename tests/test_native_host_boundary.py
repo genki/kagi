@@ -1926,6 +1926,102 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(run.stdout)
             self.assertEqual(payload["value"], "hello!\ntail\n")
 
+    def test_generic_stmt_parse_ignores_poisoned_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            entries = dist / "workspace" / "examples" / "selfhost_entries"
+            (entries / "hello_let.compile.txt").write_text("{\"kind\":\"pipeline\",\"ast\":\"\\\"poison\\\"\",\"hir\":\"\\\"poison\\\"\",\"kir\":\"\\\"poison\\\"\",\"analysis\":\"\\\"poison\\\"\",\"artifact\":\"\\\"poison\\\"\",\"stdout\":\"poison\",\"entry\":\"pipeline\",\"version\":\"v1\"}\n", encoding="utf-8")
+            (entries / "hello_let.parse.txt").write_text("\"poison\"\n", encoding="utf-8")
+
+            source_path = tmp_path / "generic_stmt.ksrc"
+            source_path.write_text(
+                'let message = concat("al", "pha")\n'
+                'print message\n'
+                'print concat("be", "ta")\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(payload["ast"])
+            self.assertEqual(ast["statements"][0]["name"], "message")
+            self.assertEqual(ast["statements"][2]["expr"]["kind"], "concat")
+            self.assertNotEqual(payload["ast"], '"poison"')
+
+    def test_generic_function_payloads_ignore_poisoned_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            entries = dist / "workspace" / "examples" / "selfhost_entries"
+            (entries / "hello_arg_fn.kir.txt").write_text("{\"kind\":\"kir\",\"functions\":[{\"name\":\"poison\",\"params\":[],\"body\":[]}],\"instructions\":[]}\n", encoding="utf-8")
+            (entries / "hello_arg_fn.analysis.txt").write_text("{\"kind\":\"analysis_v1\",\"function_arities\":{\"poison\":0},\"effects\":{\"program\":[],\"functions\":{\"poison\":[]}}}\n", encoding="utf-8")
+
+            source_path = tmp_path / "generic_fn.ksrc"
+            source_path.write_text(
+                'fn shout(text) {\n'
+                '  print concat(text, "!")\n'
+                '}\n\n'
+                'call shout("hello")\n',
+                encoding="utf-8",
+            )
+
+            capir = subprocess.run(
+                [str(launcher_bin), "selfhost-capir", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(capir.returncode, 0, capir.stderr)
+            capir_payload = __import__("json").loads(capir.stdout)
+            kir = capir_payload["kir"]
+            if isinstance(kir, str):
+                kir = __import__("json").loads(kir)
+            self.assertEqual(kir["functions"][0]["name"], "shout")
+            self.assertEqual(kir["instructions"][0]["name"], "shout")
+            self.assertNotIn("poison", __import__("json").dumps(kir, ensure_ascii=False))
+
+            check = subprocess.run(
+                [str(launcher_bin), "selfhost-check", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(check.returncode, 0, check.stderr)
+            check_payload = __import__("json").loads(check.stdout)
+            hir = check_payload["hir"]
+            if isinstance(hir, str):
+                hir = __import__("json").loads(hir)
+            self.assertEqual(hir["functions"][0]["name"], "shout")
+            self.assertEqual(check_payload["effects"]["functions"], {"shout": ["print"]})
+            self.assertEqual(check_payload["value"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()
