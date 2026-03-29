@@ -6,13 +6,38 @@ import sys
 from pathlib import Path
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
-from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
 from .ir import action_to_string
-from .selfhost_runtime import compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
-from .runtime import ExecutionResult, KagiRuntimeError, execute_program_ir, export_owner, well_formed
 
 
-def heap_to_json(result: ExecutionResult) -> dict:
+def _runtime_api():
+    from .runtime import KagiRuntimeError, execute_program_ir, export_owner, well_formed
+
+    return KagiRuntimeError, execute_program_ir, export_owner, well_formed
+
+
+def _frontend_api():
+    from .frontend import execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+
+    return execute_bootstrap_program, parse_bootstrap_program, parse_core_program
+
+
+def _selfhost_api():
+    from .selfhost_runtime import (
+        compile_selfhost_frontend_to_kir_v1,
+        execute_selfhost_frontend_entry_v1,
+    )
+
+    return compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
+
+
+def _subset_api():
+    from .subset_eval import run_subset_program
+
+    return run_subset_program
+
+
+def heap_to_json(result: object) -> dict:
+    _, _, export_owner, _ = _runtime_api()
     owners = {}
     for owner, cell in sorted(result.heap.items()):
         loan = {"kind": cell.loan.kind}
@@ -31,14 +56,14 @@ def heap_to_json(result: ExecutionResult) -> dict:
     return {"owners": owners}
 
 
-def trace_to_json(result: ExecutionResult) -> dict:
+def trace_to_json(result: object) -> dict:
     steps = []
     for index, heap in enumerate(result.trace):
         steps.append(
             {
                 "index": index,
                 "action": None if index == 0 else action_to_string(result.actions[index - 1]),
-                "owners": heap_to_json(ExecutionResult(heap=heap, trace=[], actions=[]))["owners"],
+                "owners": heap_to_json(type("TraceResult", (), {"heap": heap})())["owners"],
             }
         )
     return {"steps": steps}
@@ -57,6 +82,7 @@ def emit_text(text: str) -> None:
 
 
 def emit_diagnostic(exc: Exception, *, phase: str, use_json: bool) -> None:
+    KagiRuntimeError, _, _, _ = _runtime_api()
     if isinstance(exc, DiagnosticError):
         diagnostic = exc.diagnostic
     elif isinstance(exc, KagiRuntimeError):
@@ -88,6 +114,7 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
+    _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
     return execute_selfhost_frontend_entry_v1(frontend_source, entry="parse", args=[program_source])
 
 
@@ -114,6 +141,7 @@ def parse_json_text(raw: str, *, phase: str, expected_kind: str | None = None) -
 
 
 def execute_selfhost_text_entry(frontend_source: str, program_source: str, *, entry: str) -> str:
+    _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
     value = execute_selfhost_frontend_entry_v1(frontend_source, entry=entry, args=[program_source])
     if not isinstance(value, str):
         raise DiagnosticError(
@@ -277,6 +305,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "run":
         try:
+            _, _, parse_core_program = _frontend_api()
+            _, execute_program_ir, _, _ = _runtime_api()
             source = Path(args.file).read_text(encoding="utf-8")
             result = execute_program_ir(parse_core_program(source))
             emit_payload(heap_to_json(result))
@@ -286,6 +316,8 @@ def main() -> None:
 
     if args.command == "trace":
         try:
+            _, _, parse_core_program = _frontend_api()
+            _, execute_program_ir, _, _ = _runtime_api()
             source = Path(args.file).read_text(encoding="utf-8")
             result = execute_program_ir(parse_core_program(source))
             emit_payload(trace_to_json(result))
@@ -295,6 +327,8 @@ def main() -> None:
 
     if args.command == "check":
         try:
+            _, _, parse_core_program = _frontend_api()
+            _, execute_program_ir, _, well_formed = _runtime_api()
             source = Path(args.file).read_text(encoding="utf-8")
             program = parse_core_program(source)
             result = execute_program_ir(program)
@@ -311,6 +345,8 @@ def main() -> None:
 
     if args.command == "exports":
         try:
+            _, _, parse_core_program = _frontend_api()
+            _, execute_program_ir, export_owner, _ = _runtime_api()
             source = Path(args.file).read_text(encoding="utf-8")
             result = execute_program_ir(parse_core_program(source))
             payload = {
@@ -324,6 +360,8 @@ def main() -> None:
 
     if args.command == "bootstrap-check":
         try:
+            execute_bootstrap_program, parse_bootstrap_program, _ = _frontend_api()
+            _, _, _, well_formed = _runtime_api()
             source = Path(args.file).read_text(encoding="utf-8")
             program = parse_bootstrap_program(source)
             result = execute_bootstrap_program(source)
@@ -341,6 +379,7 @@ def main() -> None:
 
     if args.command == "bootstrap-trace":
         try:
+            execute_bootstrap_program, _, _ = _frontend_api()
             source = Path(args.file).read_text(encoding="utf-8")
             result = execute_bootstrap_program(source)
             emit_payload(trace_to_json(result))
@@ -350,6 +389,7 @@ def main() -> None:
 
     if args.command == "subset-run":
         try:
+            run_subset_program = _subset_api()
             source = Path(args.file).read_text(encoding="utf-8")
             value = run_subset_program(source, entry=args.entry, args=list(args.arg))
             emit_payload({"ok": True, "entry": args.entry, "value": value})
@@ -486,6 +526,7 @@ def main() -> None:
 
     if args.command == "selfhost-freeze":
         try:
+            compile_selfhost_frontend_to_kir_v1, _ = _selfhost_api()
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             kir_json = compile_selfhost_frontend_to_kir_v1(frontend_source)
             if args.json:

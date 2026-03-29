@@ -371,6 +371,39 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.strip(), "False")
 
+    def test_import_kagi_cli_does_not_eagerly_load_frontend_runtime_or_selfhost_runtime(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json, sys, kagi.cli; "
+                    "print(json.dumps({"
+                    "'frontend': 'kagi.frontend' in sys.modules, "
+                    "'runtime': 'kagi.runtime' in sys.modules, "
+                    "'selfhost_runtime': 'kagi.selfhost_runtime' in sys.modules, "
+                    "'subset_eval': 'kagi.subset_eval' in sys.modules"
+                    "}))"
+                ),
+            ],
+            cwd=root,
+            env={"PYTHONPATH": str(root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(
+            json.loads(proc.stdout),
+            {
+                "frontend": False,
+                "runtime": False,
+                "selfhost_runtime": False,
+                "subset_eval": False,
+            },
+        )
+
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(
             instructions=[

@@ -1,99 +1,90 @@
-from .artifact import PrintArtifactV1, artifact_v1_stdout, artifact_v1_to_json, parse_artifact_v1
-from .capir_runtime import CapIRArtifactResult, CapIRExecutionResult, KIRExecutionResult, execute_and_inspect_capir_artifact, execute_capir_artifact, execute_capir_fragment, execute_kir_program, inspect_capir_artifact, inspect_kir_program
-from .compile_result import CheckArtifactV1, CompileResultV1, LowerArtifactV1, ParseArtifactV1, compile_source_v1
-from .diagnostics import Diagnostic, DiagnosticError
-from .effects import EffectSummaryV1, infer_effects_v1
-from .frontend import BootstrapProgram, execute_bootstrap_program, parse_bootstrap_program, parse_core_program
-from .hir import HIRFunctionV1, HIRProgramV1
-from .kir import KIRPrintV0, KIRProgramV0, kir_program_from_print_artifact, serialize_kir_program_v0, inspect_kir_artifact
-from .ir import CapIRFragment, CapIRPrint, Action, ProgramIR, action_to_string, serialize_capir_fragment, serialize_program_ir
-from .resolve import ResolvedProgramV1, resolve_hir_program_v1
-from .runtime import (
-    Cell,
-    ExecutionResult,
-    Heap,
-    KagiRuntimeError,
-    LoanState,
-    apply_action,
-    execute_program_ir,
-    export_owner,
-    well_formed,
-)
-from .selfhost_bundle import SelfhostPipelineBundleV1, parse_selfhost_pipeline_bundle_v1, selfhost_pipeline_bundle_v1_to_json
-from .selfhost_runtime import compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1, execute_selfhost_frontend_pipeline_bundle_v1
-from .surface_ast import SurfaceFunctionV1, SurfaceProgramV1
-from .subset import FunctionDef, ParamDef, SubsetProgram, parse_subset_program, run_subset_program, run_subset_program_via_kir, typecheck_subset_program_v0
-from .subset_typecheck import SubsetTypecheckResultV0
-from .typecheck import TypecheckedProgramV1, typecheck_program_v1
+from __future__ import annotations
 
-__all__ = [
-    "Action",
-    "BootstrapProgram",
-    "CapIRArtifactResult",
-    "CapIRExecutionResult",
-    "CapIRFragment",
-    "CapIRPrint",
-    "Cell",
-    "CheckArtifactV1",
-    "CompileResultV1",
-    "Diagnostic",
-    "DiagnosticError",
-    "EffectSummaryV1",
-    "ExecutionResult",
-    "FunctionDef",
-    "ParamDef",
-    "Heap",
-    "HIRFunctionV1",
-    "HIRProgramV1",
-    "KagiRuntimeError",
-    "KIRExecutionResult",
-    "KIRPrintV0",
-    "KIRProgramV0",
-    "LowerArtifactV1",
-    "LoanState",
-    "ParseArtifactV1",
-    "PrintArtifactV1",
-    "ProgramIR",
-    "ResolvedProgramV1",
-    "SelfhostPipelineBundleV1",
-    "SurfaceFunctionV1",
-    "SurfaceProgramV1",
-    "SubsetProgram",
-    "SubsetTypecheckResultV0",
-    "TypecheckedProgramV1",
-    "action_to_string",
-    "apply_action",
-    "artifact_v1_stdout",
-    "artifact_v1_to_json",
-    "compile_source_v1",
-    "compile_selfhost_frontend_to_kir_v1",
-    "execute_selfhost_frontend_entry_v1",
-    "execute_selfhost_frontend_pipeline_bundle_v1",
-    "execute_bootstrap_program",
-    "execute_and_inspect_capir_artifact",
-    "execute_capir_artifact",
-    "execute_capir_fragment",
-    "execute_kir_program",
-    "execute_program_ir",
-    "export_owner",
-    "infer_effects_v1",
-    "inspect_capir_artifact",
-    "inspect_kir_program",
-    "inspect_kir_artifact",
-    "parse_artifact_v1",
-    "parse_bootstrap_program",
-    "parse_core_program",
-    "kir_program_from_print_artifact",
-    "parse_selfhost_pipeline_bundle_v1",
-    "parse_subset_program",
-    "resolve_hir_program_v1",
-    "run_subset_program",
-    "run_subset_program_via_kir",
-    "serialize_program_ir",
-    "serialize_capir_fragment",
-    "serialize_kir_program_v0",
-    "selfhost_pipeline_bundle_v1_to_json",
-    "typecheck_subset_program_v0",
-    "typecheck_program_v1",
-    "well_formed",
-]
+from importlib import import_module
+
+_EXPORTS = {
+    "Action": (".ir", "Action"),
+    "BootstrapProgram": (".frontend", "BootstrapProgram"),
+    "CapIRArtifactResult": (".capir_runtime", "CapIRArtifactResult"),
+    "CapIRExecutionResult": (".capir_runtime", "CapIRExecutionResult"),
+    "CapIRFragment": (".ir", "CapIRFragment"),
+    "CapIRPrint": (".ir", "CapIRPrint"),
+    "Cell": (".runtime", "Cell"),
+    "CheckArtifactV1": (".compile_result", "CheckArtifactV1"),
+    "CompileResultV1": (".compile_result", "CompileResultV1"),
+    "Diagnostic": (".diagnostics", "Diagnostic"),
+    "DiagnosticError": (".diagnostics", "DiagnosticError"),
+    "EffectSummaryV1": (".effects", "EffectSummaryV1"),
+    "ExecutionResult": (".runtime", "ExecutionResult"),
+    "FunctionDef": (".subset", "FunctionDef"),
+    "ParamDef": (".subset", "ParamDef"),
+    "Heap": (".runtime", "Heap"),
+    "HIRFunctionV1": (".hir", "HIRFunctionV1"),
+    "HIRProgramV1": (".hir", "HIRProgramV1"),
+    "KIRExecutionResult": (".capir_runtime", "KIRExecutionResult"),
+    "KIRPrintV0": (".kir", "KIRPrintV0"),
+    "KIRProgramV0": (".kir", "KIRProgramV0"),
+    "KagiRuntimeError": (".runtime", "KagiRuntimeError"),
+    "LoanState": (".runtime", "LoanState"),
+    "LowerArtifactV1": (".compile_result", "LowerArtifactV1"),
+    "ParseArtifactV1": (".compile_result", "ParseArtifactV1"),
+    "PrintArtifactV1": (".artifact", "PrintArtifactV1"),
+    "ProgramIR": (".ir", "ProgramIR"),
+    "ResolvedProgramV1": (".resolve", "ResolvedProgramV1"),
+    "SelfhostPipelineBundleV1": (".selfhost_bundle", "SelfhostPipelineBundleV1"),
+    "SubsetProgram": (".subset", "SubsetProgram"),
+    "SubsetTypecheckResultV0": (".subset_typecheck", "SubsetTypecheckResultV0"),
+    "SurfaceFunctionV1": (".surface_ast", "SurfaceFunctionV1"),
+    "SurfaceProgramV1": (".surface_ast", "SurfaceProgramV1"),
+    "TypecheckedProgramV1": (".typecheck", "TypecheckedProgramV1"),
+    "action_to_string": (".ir", "action_to_string"),
+    "apply_action": (".runtime", "apply_action"),
+    "artifact_v1_stdout": (".artifact", "artifact_v1_stdout"),
+    "artifact_v1_to_json": (".artifact", "artifact_v1_to_json"),
+    "compile_selfhost_frontend_to_kir_v1": (".selfhost_runtime", "compile_selfhost_frontend_to_kir_v1"),
+    "compile_source_v1": (".compile_result", "compile_source_v1"),
+    "execute_and_inspect_capir_artifact": (".capir_runtime", "execute_and_inspect_capir_artifact"),
+    "execute_bootstrap_program": (".frontend", "execute_bootstrap_program"),
+    "execute_capir_artifact": (".capir_runtime", "execute_capir_artifact"),
+    "execute_capir_fragment": (".capir_runtime", "execute_capir_fragment"),
+    "execute_kir_program": (".capir_runtime", "execute_kir_program"),
+    "execute_program_ir": (".runtime", "execute_program_ir"),
+    "execute_selfhost_frontend_entry_v1": (".selfhost_runtime", "execute_selfhost_frontend_entry_v1"),
+    "execute_selfhost_frontend_pipeline_bundle_v1": (".selfhost_runtime", "execute_selfhost_frontend_pipeline_bundle_v1"),
+    "export_owner": (".runtime", "export_owner"),
+    "infer_effects_v1": (".effects", "infer_effects_v1"),
+    "inspect_capir_artifact": (".capir_runtime", "inspect_capir_artifact"),
+    "inspect_kir_artifact": (".kir", "inspect_kir_artifact"),
+    "inspect_kir_program": (".capir_runtime", "inspect_kir_program"),
+    "kir_program_from_print_artifact": (".kir", "kir_program_from_print_artifact"),
+    "parse_artifact_v1": (".artifact", "parse_artifact_v1"),
+    "parse_bootstrap_program": (".frontend", "parse_bootstrap_program"),
+    "parse_core_program": (".frontend", "parse_core_program"),
+    "parse_selfhost_pipeline_bundle_v1": (".selfhost_bundle", "parse_selfhost_pipeline_bundle_v1"),
+    "parse_subset_program": (".subset", "parse_subset_program"),
+    "resolve_hir_program_v1": (".resolve", "resolve_hir_program_v1"),
+    "run_subset_program": (".subset", "run_subset_program"),
+    "run_subset_program_via_kir": (".subset", "run_subset_program_via_kir"),
+    "selfhost_pipeline_bundle_v1_to_json": (".selfhost_bundle", "selfhost_pipeline_bundle_v1_to_json"),
+    "serialize_capir_fragment": (".ir", "serialize_capir_fragment"),
+    "serialize_kir_program_v0": (".kir", "serialize_kir_program_v0"),
+    "serialize_program_ir": (".ir", "serialize_program_ir"),
+    "typecheck_program_v1": (".typecheck", "typecheck_program_v1"),
+    "typecheck_subset_program_v0": (".subset", "typecheck_subset_program_v0"),
+    "well_formed": (".runtime", "well_formed"),
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _EXPORTS[name]
+    value = getattr(import_module(module_name, __name__), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(list(globals().keys()) + __all__)
