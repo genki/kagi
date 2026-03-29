@@ -1856,6 +1856,76 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(payload["value"], "good\n")
             self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["good"]}')
 
+    def test_generic_stmt_native_path_does_not_need_selfhost_entries_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            source_path = tmp_path / "generic_stmt.ksrc"
+            source_path.write_text(
+                'let message = concat("al", "pha")\n'
+                'print message\n'
+                'print concat("be", "ta")\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertEqual(payload["value"], "alpha\nbeta\n")
+
+    def test_generic_function_native_path_does_not_need_selfhost_entries_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            source_path = tmp_path / "generic_fn.ksrc"
+            source_path.write_text(
+                'fn shout(name) {\n'
+                '  print concat(name, "!")\n'
+                '}\n\n'
+                'call shout("hello")\n'
+                'print "tail"\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertEqual(payload["value"], "hello!\ntail\n")
+
 
 if __name__ == "__main__":
     unittest.main()
