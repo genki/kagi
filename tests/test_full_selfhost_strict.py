@@ -36,6 +36,12 @@ class FullSelfhostStrictTest(unittest.TestCase):
         self.assertEqual(stage1, self.frontend_kir)
         self.assertEqual(stage2, stage1)
 
+    def test_freeze_from_kir_does_not_use_host_kir_runtime(self):
+        stage1 = compile_selfhost_frontend_to_kir_v1(self.frontend_source)
+        with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("freeze from kir should not use host kir runtime")):
+            stage2 = compile_selfhost_frontend_to_kir_v1(stage1)
+        self.assertEqual(stage2, stage1)
+
     def test_mainline_self_build_does_not_import_host_parser_or_lowerer(self):
         watched = [
             "kagi.subset_parser",
@@ -53,6 +59,11 @@ class FullSelfhostStrictTest(unittest.TestCase):
         self.assertTrue(build.fixed_point)
         for name in watched:
             self.assertNotIn(name, sys.modules, name)
+
+    def test_mainline_self_build_does_not_use_host_kir_runtime(self):
+        with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("mainline self-build should not use host kir runtime")):
+            build = build_selfhost_frontend_v1(self.frontend_source)
+        self.assertTrue(build.fixed_point)
 
     def test_compile_source_v1_still_works_after_self_build(self):
         build = build_selfhost_frontend_v1(self.frontend_source)

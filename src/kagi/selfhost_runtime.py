@@ -48,10 +48,9 @@ def execute_kir_entry_v0(program, entry, args, *, builtins=None, context: KIRExe
     from .capir_runtime import execute_kir_entry_fast_v0
     from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
 
-    if context is None:
-        fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins)
-        if fast is not None:
-            return fast
+    fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins, context=context)
+    if fast is not None:
+        return fast
     return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins, context=context)
 
 

@@ -46,6 +46,12 @@ class KIRExecutionResult:
     output: str
 
 
+@dataclass(frozen=True)
+class KIRExecutionContextV0:
+    current_program_source: str | None = None
+    current_program_kir: str | None = None
+
+
 _UNHANDLED = object()
 
 
@@ -72,7 +78,24 @@ def _call_local_function_v0(
     args: list[object],
     output: list[str],
     builtins: dict[str, object],
+    context: KIRExecutionContextV0 | None = None,
 ):
+    if name == "current_program_source":
+        if args:
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir-runtime", "current_program_source takes no arguments")
+            )
+        if context is None or context.current_program_source is None:
+            return _UNHANDLED
+        return context.current_program_source
+    if name == "current_program_kir":
+        if args:
+            raise DiagnosticError(
+                diagnostic_from_runtime_error("kir-runtime", "current_program_kir takes no arguments")
+            )
+        if context is None or context.current_program_kir is None:
+            return _UNHANDLED
+        return context.current_program_kir
     if name in builtins:
         return _UNHANDLED
     fn = functions.get(name)
@@ -86,7 +109,7 @@ def _call_local_function_v0(
         )
     env = dict(zip(fn.params, args))
     try:
-        handled = _run_local_block_v0(fn.body, env, output, functions, builtins)
+        handled = _run_local_block_v0(fn.body, env, output, functions, builtins, context=context)
     except _LocalReturnSignal as signal:
         return signal.value
     if not handled:
@@ -100,6 +123,7 @@ def _eval_local_expr_v0(
     output: list[str],
     functions: dict[str, KIRFunctionV0],
     builtins: dict[str, object],
+    context: KIRExecutionContextV0 | None = None,
 ):
     if isinstance(expr, KIRStringV0):
         return expr.value
@@ -114,8 +138,8 @@ def _eval_local_expr_v0(
             )
         return env[expr.name]
     if isinstance(expr, KIRConcatV0):
-        left = _eval_local_expr_v0(expr.left, env, output, functions, builtins)
-        right = _eval_local_expr_v0(expr.right, env, output, functions, builtins)
+        left = _eval_local_expr_v0(expr.left, env, output, functions, builtins, context=context)
+        right = _eval_local_expr_v0(expr.right, env, output, functions, builtins, context=context)
         if left is _UNHANDLED or right is _UNHANDLED:
             return _UNHANDLED
         if not isinstance(left, str) or not isinstance(right, str):
@@ -124,8 +148,8 @@ def _eval_local_expr_v0(
             )
         return left + right
     if isinstance(expr, KIREqV0):
-        left = _eval_local_expr_v0(expr.left, env, output, functions, builtins)
-        right = _eval_local_expr_v0(expr.right, env, output, functions, builtins)
+        left = _eval_local_expr_v0(expr.left, env, output, functions, builtins, context=context)
+        right = _eval_local_expr_v0(expr.right, env, output, functions, builtins, context=context)
         if left is _UNHANDLED or right is _UNHANDLED:
             return _UNHANDLED
         if type(left) is not type(right):
@@ -134,22 +158,22 @@ def _eval_local_expr_v0(
             )
         return left == right
     if isinstance(expr, KIRIfExprV0):
-        condition = _eval_local_expr_v0(expr.condition, env, output, functions, builtins)
+        condition = _eval_local_expr_v0(expr.condition, env, output, functions, builtins, context=context)
         if condition is _UNHANDLED:
             return _UNHANDLED
         if not isinstance(condition, bool):
             raise DiagnosticError(
                 diagnostic_from_runtime_error("kir-runtime", "if requires boolean condition")
             )
-        return _eval_local_expr_v0(expr.then_expr if condition else expr.else_expr, env, output, functions, builtins)
+        return _eval_local_expr_v0(expr.then_expr if condition else expr.else_expr, env, output, functions, builtins, context=context)
     if isinstance(expr, KIRCallExprV0):
         call_args: list[object] = []
         for arg in expr.args:
-            value = _eval_local_expr_v0(arg, env, output, functions, builtins)
+            value = _eval_local_expr_v0(arg, env, output, functions, builtins, context=context)
             if value is _UNHANDLED:
                 return _UNHANDLED
             call_args.append(value)
-        return _call_local_function_v0(functions, expr.callee, call_args, output, builtins)
+        return _call_local_function_v0(functions, expr.callee, call_args, output, builtins, context=context)
     return _UNHANDLED
 
 
@@ -159,10 +183,11 @@ def _run_local_block_v0(
     output: list[str],
     functions: dict[str, KIRFunctionV0],
     builtins: dict[str, object],
+    context: KIRExecutionContextV0 | None = None,
 ) -> bool:
     for stmt in body:
         if isinstance(stmt, KIRPrintV0):
-            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins)
+            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins, context=context)
             if value is _UNHANDLED:
                 return False
             if not isinstance(value, str):
@@ -172,40 +197,40 @@ def _run_local_block_v0(
             output.append(value)
             continue
         if isinstance(stmt, KIRLetV0):
-            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins)
+            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins, context=context)
             if value is _UNHANDLED:
                 return False
             env[stmt.name] = value
             continue
         if isinstance(stmt, KIRIfStmtV0):
-            condition = _eval_local_expr_v0(stmt.condition, env, output, functions, builtins)
+            condition = _eval_local_expr_v0(stmt.condition, env, output, functions, builtins, context=context)
             if condition is _UNHANDLED:
                 return False
             if not isinstance(condition, bool):
                 raise DiagnosticError(
                     diagnostic_from_runtime_error("kir-runtime", "if requires boolean condition")
                 )
-            if not _run_local_block_v0(stmt.then_body if condition else stmt.else_body, dict(env), output, functions, builtins):
+            if not _run_local_block_v0(stmt.then_body if condition else stmt.else_body, dict(env), output, functions, builtins, context=context):
                 return False
             continue
         if isinstance(stmt, KIRExprStmtV0):
-            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins)
+            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins, context=context)
             if value is _UNHANDLED:
                 return False
             continue
         if isinstance(stmt, KIRCallV0):
             call_args: list[object] = []
             for arg in stmt.args:
-                value = _eval_local_expr_v0(arg, env, output, functions, builtins)
+                value = _eval_local_expr_v0(arg, env, output, functions, builtins, context=context)
                 if value is _UNHANDLED:
                     return False
                 call_args.append(value)
-            result = _call_local_function_v0(functions, stmt.name, call_args, output, builtins)
+            result = _call_local_function_v0(functions, stmt.name, call_args, output, builtins, context=context)
             if result is _UNHANDLED:
                 return False
             continue
         if isinstance(stmt, KIRReturnV0):
-            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins)
+            value = _eval_local_expr_v0(stmt.expr, env, output, functions, builtins, context=context)
             if value is _UNHANDLED:
                 return False
             raise _LocalReturnSignal(value)
@@ -213,7 +238,7 @@ def _run_local_block_v0(
     return True
 
 
-def _try_execute_kir_program_locally_v0(program: KIRProgramV0, *, builtins=None):
+def _try_execute_kir_program_locally_v0(program: KIRProgramV0, *, builtins=None, context: KIRExecutionContextV0 | None = None):
     output: list[str] = []
     try:
         ok = _run_local_block_v0(
@@ -222,6 +247,7 @@ def _try_execute_kir_program_locally_v0(program: KIRProgramV0, *, builtins=None)
             output,
             {fn.name: fn for fn in program.functions},
             dict(builtins or {}),
+            context=context,
         )
     except DiagnosticError:
         raise
@@ -232,8 +258,8 @@ def _try_execute_kir_program_locally_v0(program: KIRProgramV0, *, builtins=None)
     return None
 
 
-def try_execute_kir_program_fast_v0(program: KIRProgramV0, *, builtins=None):
-    return _try_execute_kir_program_locally_v0(program, builtins=builtins)
+def try_execute_kir_program_fast_v0(program: KIRProgramV0, *, builtins=None, context: KIRExecutionContextV0 | None = None):
+    return _try_execute_kir_program_locally_v0(program, builtins=builtins, context=context)
 
 
 def execute_kir_entry_fast_v0(
@@ -242,6 +268,7 @@ def execute_kir_entry_fast_v0(
     args: list[object],
     *,
     builtins=None,
+    context: KIRExecutionContextV0 | None = None,
 ):
     functions = {fn.name: fn for fn in program.functions}
     if entry not in functions:
@@ -250,7 +277,7 @@ def execute_kir_entry_fast_v0(
         )
     output: list[str] = []
     try:
-        result = _call_local_function_v0(functions, entry, list(args), output, dict(builtins or {}))
+        result = _call_local_function_v0(functions, entry, list(args), output, dict(builtins or {}), context=context)
     except DiagnosticError:
         raise
     except Exception:
