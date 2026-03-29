@@ -17,14 +17,16 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_vendored_portable_launcher_captures_current_cpython_host_boundary(self):
         source = self.launcher_source.read_text(encoding="utf-8")
-        self.assertIn('%s/bin/python3', source)
         self.assertIn('kagi_runtime.env', source)
+        self.assertIn('RUNTIME_KIND', source)
+        self.assertIn('RUNTIME_BIN_REL', source)
+        self.assertIn('ENTRY_STYLE', source)
+        self.assertIn('ENTRY_TARGET', source)
+        self.assertIn('IMAGE_REL', source)
+        self.assertIn('WORKSPACE_REL', source)
         self.assertIn('PYTHONHOME', source)
         self.assertIn('PYTHONPATH', source)
         self.assertIn('KAGI_HOME', source)
-        self.assertIn('ENTRY_MODULE', source)
-        self.assertIn('PYTHONPATH_REL', source)
-        self.assertIn('WORKSPACE_REL', source)
         self.assertIn('"failed to exec bundled python: %s\\n"', source)
 
     def test_launcher_build_script_exists_and_targets_vendored_source(self):
@@ -34,8 +36,11 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_runtime_manifest_exists_and_describes_current_host_target(self):
         manifest = self.runtime_manifest.read_text(encoding="utf-8")
-        self.assertIn('ENTRY_MODULE=kagi.host_entry', manifest)
-        self.assertIn('PYTHONPATH_REL=app/kagi_app.zip', manifest)
+        self.assertIn('RUNTIME_KIND=python', manifest)
+        self.assertIn('RUNTIME_BIN_REL=bin/python3', manifest)
+        self.assertIn('ENTRY_STYLE=python-module', manifest)
+        self.assertIn('ENTRY_TARGET=kagi.host_entry', manifest)
+        self.assertIn('IMAGE_REL=app/kagi_app.zip', manifest)
         self.assertIn('WORKSPACE_REL=workspace', manifest)
 
 

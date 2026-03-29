@@ -9,8 +9,11 @@
 extern char **environ;
 
 typedef struct {
-    char entry_module[PATH_MAX];
-    char python_path_rel[PATH_MAX];
+    char runtime_kind[64];
+    char runtime_bin_rel[PATH_MAX];
+    char entry_style[64];
+    char entry_target[PATH_MAX];
+    char image_rel[PATH_MAX];
     char workspace_rel[PATH_MAX];
 } runtime_manifest_t;
 
@@ -80,10 +83,16 @@ static runtime_manifest_t load_runtime_manifest(const char *dist_root) {
         trim_line(key);
         trim_line(value);
 
-        if (strcmp(key, "ENTRY_MODULE") == 0) {
-            snprintf(manifest.entry_module, sizeof(manifest.entry_module), "%s", value);
-        } else if (strcmp(key, "PYTHONPATH_REL") == 0) {
-            snprintf(manifest.python_path_rel, sizeof(manifest.python_path_rel), "%s", value);
+        if (strcmp(key, "RUNTIME_KIND") == 0) {
+            snprintf(manifest.runtime_kind, sizeof(manifest.runtime_kind), "%s", value);
+        } else if (strcmp(key, "RUNTIME_BIN_REL") == 0) {
+            snprintf(manifest.runtime_bin_rel, sizeof(manifest.runtime_bin_rel), "%s", value);
+        } else if (strcmp(key, "ENTRY_STYLE") == 0) {
+            snprintf(manifest.entry_style, sizeof(manifest.entry_style), "%s", value);
+        } else if (strcmp(key, "ENTRY_TARGET") == 0) {
+            snprintf(manifest.entry_target, sizeof(manifest.entry_target), "%s", value);
+        } else if (strcmp(key, "IMAGE_REL") == 0) {
+            snprintf(manifest.image_rel, sizeof(manifest.image_rel), "%s", value);
         } else if (strcmp(key, "WORKSPACE_REL") == 0) {
             snprintf(manifest.workspace_rel, sizeof(manifest.workspace_rel), "%s", value);
         }
@@ -91,8 +100,11 @@ static runtime_manifest_t load_runtime_manifest(const char *dist_root) {
 
     fclose(fp);
 
-    require_manifest_value("ENTRY_MODULE", manifest.entry_module);
-    require_manifest_value("PYTHONPATH_REL", manifest.python_path_rel);
+    require_manifest_value("RUNTIME_KIND", manifest.runtime_kind);
+    require_manifest_value("RUNTIME_BIN_REL", manifest.runtime_bin_rel);
+    require_manifest_value("ENTRY_STYLE", manifest.entry_style);
+    require_manifest_value("ENTRY_TARGET", manifest.entry_target);
+    require_manifest_value("IMAGE_REL", manifest.image_rel);
     require_manifest_value("WORKSPACE_REL", manifest.workspace_rel);
     return manifest;
 }
@@ -116,18 +128,27 @@ int main(int argc, char **argv) {
 
     runtime_manifest_t manifest = load_runtime_manifest(dist_root);
 
-    char python_bin[PATH_MAX];
+    char runtime_bin[PATH_MAX];
     char python_home[PATH_MAX];
-    char python_path[PATH_MAX];
+    char image_path[PATH_MAX];
     char kagi_home[PATH_MAX];
 
-    snprintf(python_bin, sizeof(python_bin), "%s/bin/python3", dist_root);
+    join_path_or_die(runtime_bin, sizeof(runtime_bin), dist_root, manifest.runtime_bin_rel);
     snprintf(python_home, sizeof(python_home), "%s", dist_root);
-    join_path_or_die(python_path, sizeof(python_path), dist_root, manifest.python_path_rel);
+    join_path_or_die(image_path, sizeof(image_path), dist_root, manifest.image_rel);
     join_path_or_die(kagi_home, sizeof(kagi_home), dist_root, manifest.workspace_rel);
 
+    if (strcmp(manifest.runtime_kind, "python") != 0) {
+        fprintf(stderr, "unsupported runtime kind: %s\n", manifest.runtime_kind);
+        return 1;
+    }
+    if (strcmp(manifest.entry_style, "python-module") != 0) {
+        fprintf(stderr, "unsupported entry style: %s\n", manifest.entry_style);
+        return 1;
+    }
+
     set_env_or_die("PYTHONHOME", python_home);
-    set_env_or_die("PYTHONPATH", python_path);
+    set_env_or_die("PYTHONPATH", image_path);
     set_env_or_die("PYTHONNOUSERSITE", "1");
     set_env_or_die("PYTHONDONTWRITEBYTECODE", "1");
     set_env_or_die("KAGI_HOME", kagi_home);
@@ -138,16 +159,16 @@ int main(int argc, char **argv) {
         return 1;
     }
     int i = 0;
-    child_argv[i++] = python_bin;
+    child_argv[i++] = runtime_bin;
     child_argv[i++] = "-S";
     child_argv[i++] = "-m";
-    child_argv[i++] = manifest.entry_module;
+    child_argv[i++] = manifest.entry_target;
     for (int j = 1; j < argc; ++j) {
         child_argv[i++] = argv[j];
     }
     child_argv[i] = NULL;
 
-    execve(python_bin, child_argv, environ);
+    execve(runtime_bin, child_argv, environ);
     fprintf(stderr, "failed to exec bundled python: %s\n", strerror(errno));
     return 1;
 }
