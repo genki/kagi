@@ -64,6 +64,7 @@ _EXPORTS = {
     "inspect_kir_program": (".capir_runtime", "inspect_kir_program"),
     "kir_program_from_print_artifact": (".kir", "kir_program_from_print_artifact"),
     "host_command_from_argparse": (".host_abi", "host_command_from_argparse"),
+    "parse_host_argv_v1": (".host_abi", "parse_host_argv_v1"),
     "parse_artifact_v1": (".artifact", "parse_artifact_v1"),
     "parse_bootstrap_program": (".frontend", "parse_bootstrap_program"),
     "parse_core_program": (".frontend", "parse_core_program"),

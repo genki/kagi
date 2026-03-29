@@ -11,11 +11,12 @@ from unittest.mock import patch
 import kagi
 import kagi.cli as cli_module
 import kagi.cli_host as cli_host_module
+import kagi.host_entry as host_entry_module
 import kagi.kir_runtime as kir_runtime_module
 import kagi.selfhost_runtime as selfhost_runtime_module
 import kagi.subset_builtins as subset_builtins
 from kagi.compile_result import compile_source_v1
-from kagi.host_abi import KagiHostCommandV1
+from kagi.host_abi import KagiHostCommandV1, parse_host_argv_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
     capir_fragment_from_kir_program,
@@ -564,6 +565,34 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(response.exit_code, 1)
         self.assertIsNone(response.payload)
         self.assertIn("missing.ks", response.stderr)
+
+    def test_parse_host_argv_v1_parses_selfhost_bootstrap(self):
+        command = parse_host_argv_v1(["selfhost-bootstrap", "--json", "frontend.ks"])
+        self.assertEqual(
+            command,
+            KagiHostCommandV1(
+                command="selfhost-bootstrap",
+                use_json=True,
+                frontend="frontend.ks",
+            ),
+        )
+
+    def test_host_entry_main_executes_without_argparse(self):
+        root = Path(__file__).resolve().parents[1]
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as ctx:
+                host_entry_module.main(
+                    [
+                        "selfhost-bootstrap",
+                        "--json",
+                        str(root / "examples" / "selfhost_frontend.ks"),
+                    ]
+                )
+        self.assertEqual(ctx.exception.code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
 
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(

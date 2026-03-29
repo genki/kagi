@@ -21,7 +21,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('PYTHONHOME', source)
         self.assertIn('PYTHONPATH', source)
         self.assertIn('KAGI_HOME', source)
-        self.assertIn('"kagi.cli"', source)
+        self.assertIn('"kagi.host_entry"', source)
         self.assertIn('"failed to exec bundled python: %s\\n"', source)
 
     def test_launcher_build_script_exists_and_targets_vendored_source(self):

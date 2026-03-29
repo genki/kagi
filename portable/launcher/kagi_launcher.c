@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
     child_argv[i++] = python_bin;
     child_argv[i++] = "-S";
     child_argv[i++] = "-m";
-    child_argv[i++] = "kagi.cli";
+    child_argv[i++] = "kagi.host_entry";
     for (int j = 1; j < argc; ++j) {
         child_argv[i++] = argv[j];
     }
