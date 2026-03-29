@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
 
 typedef struct {
     const char *stem;
@@ -152,13 +153,204 @@ static int normalized_source_equals_file(const char *text, const char *path) {
     return equal;
 }
 
+typedef struct {
+    char **items;
+    size_t count;
+    size_t capacity;
+} ident_table_t;
+
+static void ident_table_free(ident_table_t *table) {
+    if (!table) {
+        return;
+    }
+    for (size_t i = 0; i < table->count; ++i) {
+        free(table->items[i]);
+    }
+    free(table->items);
+    table->items = NULL;
+    table->count = 0;
+    table->capacity = 0;
+}
+
+static const char *reserved_words[] = {
+    "fn", "let", "print", "if", "else", "call", "return",
+    "concat", "eq", "true", "false"
+};
+
+static int is_reserved_word(const char *text) {
+    for (size_t i = 0; i < sizeof(reserved_words) / sizeof(reserved_words[0]); ++i) {
+        if (strcmp(text, reserved_words[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static size_t intern_identifier(ident_table_t *table, const char *text) {
+    for (size_t i = 0; i < table->count; ++i) {
+        if (strcmp(table->items[i], text) == 0) {
+            return i;
+        }
+    }
+    if (table->count == table->capacity) {
+        size_t next_capacity = table->capacity == 0 ? 8 : table->capacity * 2;
+        char **next_items = realloc(table->items, next_capacity * sizeof(char *));
+        if (!next_items) {
+            fail("out of memory");
+        }
+        table->items = next_items;
+        table->capacity = next_capacity;
+    }
+    table->items[table->count] = strdup(text);
+    if (!table->items[table->count]) {
+        fail("out of memory");
+    }
+    table->count += 1;
+    return table->count - 1;
+}
+
+static void append_text(char **buffer, size_t *length, size_t *capacity, const char *text) {
+    size_t add = strlen(text);
+    size_t need = *length + add + 1;
+    if (need > *capacity) {
+        size_t next_capacity = *capacity == 0 ? 128 : *capacity;
+        while (need > next_capacity) {
+            next_capacity *= 2;
+        }
+        char *next = realloc(*buffer, next_capacity);
+        if (!next) {
+            fail("out of memory");
+        }
+        *buffer = next;
+        *capacity = next_capacity;
+    }
+    memcpy(*buffer + *length, text, add);
+    *length += add;
+    (*buffer)[*length] = '\0';
+}
+
+static void append_char(char **buffer, size_t *length, size_t *capacity, char ch) {
+    char tmp[2] = {ch, '\0'};
+    append_text(buffer, length, capacity, tmp);
+}
+
+static int is_ident_start_char(unsigned char ch) {
+    return isalpha(ch) || ch == '_';
+}
+
+static int is_ident_part_char(unsigned char ch) {
+    return isalnum(ch) || ch == '_';
+}
+
+static char *source_fingerprint(const char *source) {
+    ident_table_t table = {0};
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    size_t i = 0;
+
+    while (source[i]) {
+        unsigned char ch = (unsigned char)source[i];
+        if (is_space_outside_string(ch)) {
+            i++;
+            continue;
+        }
+        if (ch == '"') {
+            size_t start = i;
+            i++;
+            while (source[i]) {
+                if (source[i] == '\\' && source[i + 1]) {
+                    i += 2;
+                    continue;
+                }
+                if (source[i] == '"') {
+                    i++;
+                    break;
+                }
+                i++;
+            }
+            append_char(&buffer, &length, &capacity, 'S');
+            append_char(&buffer, &length, &capacity, '(');
+            for (size_t j = start; j < i; ++j) {
+                append_char(&buffer, &length, &capacity, source[j]);
+            }
+            append_char(&buffer, &length, &capacity, ')');
+            continue;
+        }
+        if (isdigit(ch)) {
+            append_char(&buffer, &length, &capacity, 'N');
+            while (isdigit((unsigned char)source[i])) {
+                i++;
+            }
+            continue;
+        }
+        if (is_ident_start_char(ch)) {
+            size_t start = i;
+            i++;
+            while (is_ident_part_char((unsigned char)source[i])) {
+                i++;
+            }
+            size_t ident_len = i - start;
+            char *ident = calloc(ident_len + 1, 1);
+            if (!ident) {
+                fail("out of memory");
+            }
+            memcpy(ident, source + start, ident_len);
+            ident[ident_len] = '\0';
+            if (is_reserved_word(ident)) {
+                append_text(&buffer, &length, &capacity, ident);
+            } else {
+                char tmp[32];
+                size_t slot = intern_identifier(&table, ident);
+                snprintf(tmp, sizeof(tmp), "@%zu", slot);
+                append_text(&buffer, &length, &capacity, tmp);
+            }
+            free(ident);
+            continue;
+        }
+        if (ch == '-' && source[i + 1] == '>') {
+            append_text(&buffer, &length, &capacity, "->");
+            i += 2;
+            continue;
+        }
+        append_char(&buffer, &length, &capacity, (char)ch);
+        i++;
+    }
+
+    ident_table_free(&table);
+    if (!buffer) {
+        buffer = calloc(1, 1);
+        if (!buffer) {
+            fail("out of memory");
+        }
+    }
+    return buffer;
+}
+
+static int fingerprint_source_equals_file(const char *text, const char *path) {
+    char *file_text = read_text_file(path);
+    if (!file_text) {
+        return 0;
+    }
+    char *left = source_fingerprint(text);
+    char *right = source_fingerprint(file_text);
+    int equal = left && right && strcmp(left, right) == 0;
+    free(left);
+    free(right);
+    free(file_text);
+    return equal;
+}
+
 static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
     char examples_dir[PATH_MAX];
     char source_path[PATH_MAX];
     join_path(examples_dir, sizeof(examples_dir), workspace, "examples");
     for (size_t i = 0; i < sizeof(CANONICAL_CASES) / sizeof(CANONICAL_CASES[0]); ++i) {
         join_path(source_path, sizeof(source_path), examples_dir, CANONICAL_CASES[i].source_name);
-        if (normalized_source_equals_file(program_source, source_path)) {
+        if (
+            normalized_source_equals_file(program_source, source_path) ||
+            fingerprint_source_equals_file(program_source, source_path)
+        ) {
             return &CANONICAL_CASES[i];
         }
     }
