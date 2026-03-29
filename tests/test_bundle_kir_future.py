@@ -148,6 +148,63 @@ class BundleKirFutureTest(unittest.TestCase):
         self.assertEqual(bundle_api_spy.call_args.args, (frontend_source, source))
         self.assertEqual(compiled.metadata.frontend_entry, "pipeline")
 
+    def test_cli_selfhost_run_canonical_frontend_uses_typed_bundle_api(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = root / "examples" / "selfhost_frontend.ks"
+        source = root / "examples" / "hello_arg_fn.ksrc"
+
+        import kagi.cli as cli_module
+
+        argv = [
+            "kagi",
+            "selfhost-run",
+            "--json",
+            str(frontend),
+            str(source),
+        ]
+        with patch.object(cli_module, "_selfhost_api") as api_spy:
+            from kagi.selfhost_runtime import (
+                build_selfhost_frontend_v1,
+                compile_selfhost_frontend_to_kir_v1,
+                execute_selfhost_frontend_entry_v1,
+                execute_selfhost_frontend_pipeline_bundle_v1,
+            )
+            api_spy.return_value = (
+                build_selfhost_frontend_v1,
+                compile_selfhost_frontend_to_kir_v1,
+                execute_selfhost_frontend_entry_v1,
+                execute_selfhost_frontend_pipeline_bundle_v1,
+            )
+            with patch.object(cli_module, "emit_payload") as emit_spy:
+                with patch("sys.argv", argv):
+                    cli_module.main()
+        payload = emit_spy.call_args.args[0]
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["entry"], "pipeline")
+        self.assertEqual(payload["value"], "hello, world!")
+
+    def test_cli_selfhost_run_canonical_frontend_does_not_depend_on_python_bundle_decoder(self):
+        root = Path(__file__).resolve().parents[1]
+        frontend = root / "examples" / "selfhost_frontend.ks"
+        source = root / "examples" / "hello_arg_fn.ksrc"
+
+        import kagi.cli as cli_module
+
+        argv = [
+            "kagi",
+            "selfhost-run",
+            "--json",
+            str(frontend),
+            str(source),
+        ]
+        with patch("kagi.selfhost_runtime.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("python bundle decoder should not be used by canonical cli path")):
+            with patch.object(cli_module, "emit_payload") as emit_spy:
+                with patch("sys.argv", argv):
+                    cli_module.main()
+        payload = emit_spy.call_args.args[0]
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["value"], "hello, world!")
+
     def test_execute_selfhost_frontend_pipeline_bundle_v1_canonical_frontend_uses_entry_snapshots(self):
         root = Path(__file__).resolve().parents[1]
         frontend_source = (root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8")

@@ -26,9 +26,15 @@ def _selfhost_api():
         build_selfhost_frontend_v1,
         compile_selfhost_frontend_to_kir_v1,
         execute_selfhost_frontend_entry_v1,
+        execute_selfhost_frontend_pipeline_bundle_v1,
     )
 
-    return build_selfhost_frontend_v1, compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
+    return (
+        build_selfhost_frontend_v1,
+        compile_selfhost_frontend_to_kir_v1,
+        execute_selfhost_frontend_entry_v1,
+        execute_selfhost_frontend_pipeline_bundle_v1,
+    )
 
 
 def _subset_api():
@@ -115,7 +121,7 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
-    _, _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
+    _, _, execute_selfhost_frontend_entry_v1, _ = _selfhost_api()
     return execute_selfhost_frontend_entry_v1(frontend_source, entry="parse", args=[program_source])
 
 
@@ -142,7 +148,7 @@ def parse_json_text(raw: str, *, phase: str, expected_kind: str | None = None) -
 
 
 def execute_selfhost_text_entry(frontend_source: str, program_source: str, *, entry: str) -> str:
-    _, _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
+    _, _, execute_selfhost_frontend_entry_v1, _ = _selfhost_api()
     value = execute_selfhost_frontend_entry_v1(frontend_source, entry=entry, args=[program_source])
     if not isinstance(value, str):
         raise DiagnosticError(
@@ -153,31 +159,30 @@ def execute_selfhost_text_entry(frontend_source: str, program_source: str, *, en
     return value
 
 
-def load_selfhost_pipeline_payload(frontend_source: str, program_source: str) -> dict[str, object]:
-    payload = parse_json_text(
-        execute_selfhost_text_entry(frontend_source, program_source, entry="pipeline"),
-        phase="selfhost-pipeline",
-        expected_kind="pipeline_bundle",
-    )
-    assert isinstance(payload, dict)
-    return payload
+def load_selfhost_pipeline_bundle(frontend_source: str, program_source: str):
+    _, _, _, execute_selfhost_frontend_pipeline_bundle_v1 = _selfhost_api()
+    return execute_selfhost_frontend_pipeline_bundle_v1(frontend_source, program_source)
 
 
-def bundle_field_raw(bundle: dict[str, object], field: str) -> str:
-    if field not in bundle:
+def bundle_field_raw(bundle, field: str) -> str:
+    mapping = {
+        "ast": bundle.raw_ast,
+        "hir": bundle.raw_hir,
+        "kir": bundle.raw_kir,
+        "analysis": bundle.raw_analysis,
+        "check": bundle.raw_check,
+        "artifact": bundle.raw_artifact,
+        "compile": bundle.raw_compile,
+    }
+    if field not in mapping:
         raise DiagnosticError(
             diagnostic_from_runtime_error("selfhost-pipeline", f"missing bundle field: {field}")
         )
-    return json.dumps(bundle[field], ensure_ascii=False, separators=(",", ":"))
+    return mapping[field]
 
 
-def bundle_field_object(bundle: dict[str, object], field: str) -> dict[str, object]:
-    value = bundle.get(field)
-    if not isinstance(value, dict):
-        raise DiagnosticError(
-            diagnostic_from_runtime_error("selfhost-pipeline", f"{field} must be an object")
-        )
-    return value
+def bundle_field_object(bundle, field: str) -> dict[str, object]:
+    return parse_json_text(bundle_field_raw(bundle, field), phase="selfhost-pipeline")
 
 
 def artifact_texts_from_raw(raw_artifact: str) -> list[str]:
@@ -204,7 +209,7 @@ def capir_from_raw_artifact(raw_artifact: str) -> dict[str, object]:
     }
 
 
-def kir_from_pipeline_payload(bundle: dict[str, object], *, raw_compile: str) -> dict[str, object]:
+def kir_from_pipeline_payload(bundle, *, raw_compile: str) -> dict[str, object]:
     kir = bundle_field_object(bundle, "kir")
     functions = kir.get("functions")
     instructions = kir.get("instructions")
@@ -229,7 +234,7 @@ def kir_from_pipeline_payload(bundle: dict[str, object], *, raw_compile: str) ->
     return kir
 
 
-def effects_from_pipeline_payload(bundle: dict[str, object]) -> dict[str, object]:
+def effects_from_pipeline_payload(bundle) -> dict[str, object]:
     analysis = bundle_field_object(bundle, "analysis")
     effects = analysis.get("effects")
     if not isinstance(effects, dict):
@@ -406,7 +411,7 @@ def main() -> None:
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
             if args.json:
-                bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+                bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
                 raw_ast = bundle_field_raw(bundle, "ast")
                 raw_compile = bundle_field_raw(bundle, "compile")
                 emit_payload(
@@ -433,7 +438,7 @@ def main() -> None:
     if args.command == "selfhost-check":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
@@ -487,7 +492,7 @@ def main() -> None:
     if args.command == "selfhost-emit":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
@@ -508,7 +513,7 @@ def main() -> None:
     if args.command == "selfhost-capir":
         try:
             frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            bundle = load_selfhost_pipeline_payload(frontend_source, program_source)
+            bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             raw_compile = bundle_field_raw(bundle, "compile")
             emit_payload(
                 {
@@ -531,7 +536,7 @@ def main() -> None:
 
     if args.command == "selfhost-freeze":
         try:
-            _, compile_selfhost_frontend_to_kir_v1, _ = _selfhost_api()
+            _, compile_selfhost_frontend_to_kir_v1, _, _ = _selfhost_api()
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             kir_json = compile_selfhost_frontend_to_kir_v1(frontend_source)
             if args.json:
@@ -544,7 +549,7 @@ def main() -> None:
 
     if args.command == "selfhost-build":
         try:
-            build_selfhost_frontend_v1, _, _ = _selfhost_api()
+            build_selfhost_frontend_v1, _, _, _ = _selfhost_api()
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             build = build_selfhost_frontend_v1(frontend_source)
             if args.json:
