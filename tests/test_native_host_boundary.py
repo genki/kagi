@@ -830,7 +830,6 @@ class NativeHostBoundaryTest(unittest.TestCase):
                 },
             )
 
-    @unittest.expectedFailure
     def test_future_line_parser_native_image_can_parse_renamed_hello_arg_fn_shape(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -927,7 +926,6 @@ class NativeHostBoundaryTest(unittest.TestCase):
                 },
             )
 
-    @unittest.expectedFailure
     def test_future_line_parser_native_image_can_run_noncanonical_let_concat_program(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1003,8 +1001,28 @@ class NativeHostBoundaryTest(unittest.TestCase):
             )
             self.assertEqual(parse.returncode, 0, parse.stderr)
             payload = __import__("json").loads(parse.stdout)
-            self.assertIn('"name":"shout"', payload["ast"])
-            self.assertIn('"params":["x"]', payload["ast"])
+            self.assertEqual(
+                __import__("json").loads(payload["ast"]),
+                {
+                    "kind": "program",
+                    "functions": [],
+                    "statements": [
+                        {
+                            "kind": "let",
+                            "name": "greeting",
+                            "expr": {
+                                "kind": "concat",
+                                "left": {"kind": "string", "value": "native "},
+                                "right": {"kind": "string", "value": "parser future"},
+                            },
+                        },
+                        {
+                            "kind": "print",
+                            "expr": {"kind": "var", "name": "greeting"},
+                        },
+                    ],
+                },
+            )
 
     def test_future_line_parser_native_image_can_parse_noncanonical_let_print_program(self):
         with tempfile.TemporaryDirectory() as tmp:
