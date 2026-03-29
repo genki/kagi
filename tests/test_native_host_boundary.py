@@ -314,8 +314,19 @@ class NativeHostBoundaryTest(unittest.TestCase):
             shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
             shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
 
+            frontend_copy = tmp_path / "default_frontend_copy.ks"
+            frontend_copy.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            program_copy = tmp_path / "default_program_copy.ksrc"
+            program_copy.write_text(
+                (self.root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
             run = subprocess.run(
-                [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(self.root / "examples" / "hello_arg_fn.ksrc")],
+                [str(launcher_bin), "selfhost-run", str(frontend_copy), str(program_copy)],
                 cwd=dist,
                 check=False,
                 capture_output=True,
@@ -559,6 +570,128 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(run.stdout)
             self.assertTrue(payload["ok"])
             self.assertTrue(payload["fixed_point"])
+
+    def test_default_manifest_native_image_accepts_frontend_kir_alias_for_selfhost_freeze_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_kir_alias = tmp_path / "frontend_alias.kir.json"
+            frontend_kir_alias.write_text(
+                (self.root / "examples" / "selfhost_frontend.kir.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-freeze", "--json", str(frontend_kir_alias)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["kir"]["kind"], "kir")
+
+    def test_default_manifest_native_image_accepts_whitespace_frontend_and_identifier_renamed_program_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_variant = tmp_path / "frontend_variant.ks"
+            frontend_variant.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8").replace("\n", "\n\n"),
+                encoding="utf-8",
+            )
+            variant_program = tmp_path / "renamed_json.ksrc"
+            variant_program.write_text(
+                'fn shout(x) {\n'
+                '  print concat(x, "!")\n'
+                '}\n\n'
+                'call shout("hello, world")\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(frontend_variant), str(variant_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["value"], "hello, world!\n")
 
     def test_default_manifest_native_image_accepts_identifier_renamed_variant_program(self):
         with tempfile.TemporaryDirectory() as tmp:
