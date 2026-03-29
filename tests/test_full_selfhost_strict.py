@@ -14,6 +14,7 @@ import kagi.selfhost_runtime as selfhost_runtime_module
 from kagi.compile_result import compile_source_v1
 from kagi.diagnostics import DiagnosticError
 from kagi.selfhost_runtime import (
+    bootstrap_selfhost_frontend_v1,
     build_selfhost_frontend_v1,
     compile_selfhost_frontend_to_kir_v1,
     execute_selfhost_frontend_entry_v1,
@@ -33,6 +34,14 @@ class FullSelfhostStrictTest(unittest.TestCase):
         self.assertTrue(build.fixed_point)
         self.assertEqual(build.stage1_kir, build.stage2_kir)
         self.assertEqual(build.stage1_kir, self.frontend_kir)
+
+    def test_bootstrap_selfhost_frontend_exposes_seed_stage_chain(self):
+        bootstrap = bootstrap_selfhost_frontend_v1(self.frontend_source)
+        self.assertEqual(bootstrap.seed_kind, "canonical-seed-kir")
+        self.assertTrue(bootstrap.fixed_point)
+        self.assertEqual(bootstrap.stage0_kir, self.frontend_kir)
+        self.assertEqual(bootstrap.stage1_kir, self.frontend_kir)
+        self.assertEqual(bootstrap.stage2_kir, self.frontend_kir)
 
     def test_freeze_from_kir_is_identity_at_fixed_point(self):
         stage1 = compile_selfhost_frontend_to_kir_v1(self.frontend_source)
@@ -146,6 +155,31 @@ class FullSelfhostStrictTest(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["fixed_point"])
+        self.assertEqual(payload["stage1_kir"], json.loads(self.frontend_kir))
+        self.assertEqual(payload["stage2_kir"], json.loads(self.frontend_kir))
+
+    def test_cli_selfhost_bootstrap_reports_seed_stage_chain(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "kagi.cli",
+                "selfhost-bootstrap",
+                "--json",
+                str(self.root / "examples" / "selfhost_frontend.ks"),
+            ],
+            cwd=self.root,
+            env={"PYTHONPATH": str(self.root / "src")},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
+        self.assertTrue(payload["fixed_point"])
+        self.assertEqual(payload["stage0_kir"], json.loads(self.frontend_kir))
         self.assertEqual(payload["stage1_kir"], json.loads(self.frontend_kir))
         self.assertEqual(payload["stage2_kir"], json.loads(self.frontend_kir))
 

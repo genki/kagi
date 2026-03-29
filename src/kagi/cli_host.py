@@ -42,6 +42,12 @@ def _selfhost_api():
     )
 
 
+def _selfhost_bootstrap_api():
+    from .selfhost_runtime import bootstrap_selfhost_frontend_v1
+
+    return bootstrap_selfhost_frontend_v1
+
+
 def _subset_api():
     from .subset_eval import run_subset_program
 
@@ -484,6 +490,28 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                 )
             else:
                 emit_text(build.stage1_kir)
+        except Exception as exc:
+            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-bootstrap":
+        try:
+            bootstrap_selfhost_frontend_v1 = _selfhost_bootstrap_api()
+            frontend_source = read_text_file(args.frontend)
+            bootstrap = bootstrap_selfhost_frontend_v1(frontend_source)
+            if args.json:
+                emit_payload(
+                    {
+                        "ok": True,
+                        "seed_kind": bootstrap.seed_kind,
+                        "fixed_point": bootstrap.fixed_point,
+                        "stage0_kir": json.loads(bootstrap.stage0_kir),
+                        "stage1_kir": json.loads(bootstrap.stage1_kir),
+                        "stage2_kir": json.loads(bootstrap.stage2_kir),
+                    }
+                )
+            else:
+                emit_text(bootstrap.stage2_kir)
         except Exception as exc:
             emit_diag(exc, phase="subset-runtime", use_json=args.json)
         return

@@ -215,11 +215,20 @@ self-hosting 用の最小 subset を追加しています。
 `selfhost-run` は KIR v0 を経由して stdout を出します。非 JSON の主経路は `pipeline -> KIR -> stdout` です。
 `selfhost-check` も `compile_source_v1(...)` を通るので、静的パスの結果を返します。
 
+また、一般的な self-hosting の流れに合わせて `selfhost-bootstrap` を置いています。これは trusted seed KIR から
+
+- `stage0` trusted seed
+- `stage1` seed compiler が自分自身を compile した結果
+- `stage2` stage1 compiler がもう一度自分自身を compile した結果
+
+を返し、fixed point を確認します。
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 kagi selfhost-parse --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-check --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-capir --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
+kagi selfhost-bootstrap --json /home/vagrant/kagi/examples/selfhost_frontend.ks
 kagi selfhost-emit --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run --json /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc
 kagi selfhost-run /home/vagrant/kagi/examples/selfhost_frontend.ks /home/vagrant/kagi/examples/hello.ksrc

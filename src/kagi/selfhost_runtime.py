@@ -30,6 +30,19 @@ class SelfhostBuildResultV1:
         return self.stage1_kir == self.stage2_kir
 
 
+@dataclass(frozen=True)
+class SelfhostBootstrapChainV1:
+    seed_kind: str
+    frontend_source: str
+    stage0_kir: str
+    stage1_kir: str
+    stage2_kir: str
+
+    @property
+    def fixed_point(self) -> bool:
+        return self.stage1_kir == self.stage2_kir
+
+
 def parse_subset_program(source: str):
     from .subset_parser import parse_subset_program as parse_subset_program_impl
 
@@ -97,6 +110,17 @@ def execute_selfhost_frontend_pipeline_bundle_v1(
 
 def compile_selfhost_frontend_to_kir_v1(frontend_source: str) -> str:
     return build_selfhost_frontend_v1(frontend_source).stage1_kir
+
+
+def bootstrap_selfhost_frontend_v1(frontend_source: str) -> SelfhostBootstrapChainV1:
+    build = build_selfhost_frontend_v1(frontend_source)
+    return SelfhostBootstrapChainV1(
+        seed_kind="canonical-seed-kir",
+        frontend_source=frontend_source,
+        stage0_kir=build.stage0_kir,
+        stage1_kir=build.stage1_kir,
+        stage2_kir=build.stage2_kir,
+    )
 
 
 def try_parse_selfhost_frontend_kir_v1(frontend_source: str):

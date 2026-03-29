@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     selfhost_build_parser = subparsers.add_parser("selfhost-build")
     selfhost_build_parser.add_argument("frontend")
     add_json_flag(selfhost_build_parser)
+
+    selfhost_bootstrap_parser = subparsers.add_parser("selfhost-bootstrap")
+    selfhost_bootstrap_parser.add_argument("frontend")
+    add_json_flag(selfhost_bootstrap_parser)
     return parser
 
 
