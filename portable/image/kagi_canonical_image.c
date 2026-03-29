@@ -1795,6 +1795,37 @@ static int parse_named_let_line(const char *line, const char *expected_name, nat
     return ok;
 }
 
+static int parse_any_let_line(const char *line, char **out_name, native_expr_t *out_expr) {
+    const char *let_prefix = "let ";
+    if (strncmp(line, let_prefix, strlen(let_prefix)) != 0) {
+        return 0;
+    }
+    char *copy = strdup(line + strlen(let_prefix));
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *equal = strstr(copy, "=");
+    if (!equal) {
+        free(copy);
+        return 0;
+    }
+    *equal = '\0';
+    char *name = trim_copy(copy);
+    if (!parse_ident_expr(name, out_name)) {
+        free(name);
+        free(copy);
+        return 0;
+    }
+    free(name);
+    int ok = parse_simple_expr(equal + 1, out_expr) || parse_eq_var_string_expr(equal + 1, out_expr);
+    free(copy);
+    if (!ok) {
+        free(*out_name);
+        *out_name = NULL;
+    }
+    return ok;
+}
+
 static int try_parse_native_if_expr_program(const char *source, native_if_expr_program_t *out) {
     memset(out, 0, sizeof(*out));
     char *copy = strdup(source);
@@ -1816,13 +1847,8 @@ static int try_parse_native_if_expr_program(const char *source, native_if_expr_p
         free(copy);
         return 0;
     }
-    out->greeting_name = strdup("greeting");
-    out->enabled_name = strdup("enabled");
-    if (!out->greeting_name || !out->enabled_name) {
-        fail("out of memory");
-    }
-    if (!parse_named_let_line(lines[0], out->greeting_name, &out->greeting_expr) ||
-        !parse_named_let_line(lines[1], out->enabled_name, &out->enabled_expr)) {
+    if (!parse_any_let_line(lines[0], &out->greeting_name, &out->greeting_expr) ||
+        !parse_any_let_line(lines[1], &out->enabled_name, &out->enabled_expr)) {
         free_native_if_expr_program(out);
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
@@ -1846,6 +1872,12 @@ static int try_parse_native_if_expr_program(const char *source, native_if_expr_p
     size_t cond_len = (size_t)(split - out->print_expr.left);
     if (strncmp(out->print_expr.left, out->enabled_name, cond_len) != 0 || strlen(out->enabled_name) != cond_len ||
         strcmp(split + 1, out->greeting_name) != 0) {
+        free_native_if_expr_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    if (out->enabled_expr.kind != NATIVE_EXPR_EQ_VAR_STRING || strcmp(out->enabled_expr.left, out->greeting_name) != 0) {
         free_native_if_expr_program(out);
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
@@ -1877,19 +1909,19 @@ static int try_parse_native_if_stmt_program(const char *source, native_if_stmt_p
         free(copy);
         return 0;
     }
-    out->greeting_name = strdup("greeting");
-    out->enabled_name = strdup("enabled");
-    if (!out->greeting_name || !out->enabled_name) {
-        fail("out of memory");
-    }
-    if (!parse_named_let_line(lines[0], out->greeting_name, &out->greeting_expr) ||
-        !parse_named_let_line(lines[1], out->enabled_name, &out->enabled_expr)) {
+    if (!parse_any_let_line(lines[0], &out->greeting_name, &out->greeting_expr) ||
+        !parse_any_let_line(lines[1], &out->enabled_name, &out->enabled_expr)) {
         free_native_if_stmt_program(out);
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
         return 0;
     }
-    if (strcmp(lines[2], "if enabled {") != 0 || strcmp(lines[4], "} else {") != 0 || strcmp(lines[6], "}") != 0) {
+    char expected_if_header[256];
+    int written = snprintf(expected_if_header, sizeof(expected_if_header), "if %s {", out->enabled_name);
+    if (written < 0 || (size_t)written >= sizeof(expected_if_header)) {
+        fail("if header too long");
+    }
+    if (strcmp(lines[2], expected_if_header) != 0 || strcmp(lines[4], "} else {") != 0 || strcmp(lines[6], "}") != 0) {
         free_native_if_stmt_program(out);
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
@@ -1905,6 +1937,12 @@ static int try_parse_native_if_stmt_program(const char *source, native_if_stmt_p
     }
     out->then_expr.kind = NATIVE_EXPR_VAR;
     if (strcmp(out->then_expr.left, out->greeting_name) != 0) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    if (out->enabled_expr.kind != NATIVE_EXPR_EQ_VAR_STRING || strcmp(out->enabled_expr.left, out->greeting_name) != 0) {
         free_native_if_stmt_program(out);
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
@@ -2082,12 +2120,21 @@ static char *native_if_stmt_program_to_analysis_json(void) {
 }
 
 static char *native_if_stmt_program_to_artifact_json(const native_if_stmt_program_t *program) {
-    size_t greeting_size = strlen(program->greeting_expr.left) + strlen(program->greeting_expr.right) + 1;
+    size_t greeting_size = 1;
+    if (program->greeting_expr.kind == NATIVE_EXPR_STRING) {
+        greeting_size = strlen(program->greeting_expr.left) + 1;
+    } else {
+        greeting_size = strlen(program->greeting_expr.left) + strlen(program->greeting_expr.right) + 1;
+    }
     char *greeting = calloc(greeting_size, 1);
     if (!greeting) {
         fail("out of memory");
     }
-    snprintf(greeting, greeting_size, "%s%s", program->greeting_expr.left, program->greeting_expr.right);
+    if (program->greeting_expr.kind == NATIVE_EXPR_STRING) {
+        snprintf(greeting, greeting_size, "%s", program->greeting_expr.left);
+    } else {
+        snprintf(greeting, greeting_size, "%s%s", program->greeting_expr.left, program->greeting_expr.right);
+    }
     const char *chosen = strcmp(greeting, program->enabled_expr.right) == 0 ? greeting : program->else_expr.left;
     size_t size = strlen(chosen) + 64;
     char *buffer = calloc(size, 1);

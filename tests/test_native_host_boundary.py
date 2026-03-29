@@ -1478,6 +1478,77 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(ast["statements"][2]["kind"], "print")
             self.assertEqual(ast["statements"][2]["expr"]["kind"], "if")
 
+    def test_default_manifest_native_image_synthesizes_renamed_if_expr_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_expr_renamed.ksrc"
+            source_path.write_text(
+                'let message = concat("native ", "expr")\n'
+                'let ok = eq(message, "native expr")\n'
+                'print if(ok, message, "disabled")\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(payload["ast"])
+            self.assertEqual(ast["statements"][0]["name"], "message")
+            self.assertEqual(ast["statements"][1]["name"], "ok")
+            self.assertEqual(ast["statements"][2]["expr"]["condition"]["name"], "ok")
+            self.assertEqual(ast["statements"][2]["expr"]["then"]["name"], "message")
+
+    def test_default_manifest_native_image_runs_false_branch_if_expr_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_expr_false.ksrc"
+            source_path.write_text(
+                'let message = "native expr"\n'
+                'let ok = eq(message, "mismatch")\n'
+                'print if(ok, message, "disabled")\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertEqual(payload["value"], "disabled\n")
+            self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["disabled"]}')
+
     def test_default_manifest_native_image_synthesizes_noncanonical_if_stmt_program(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1548,6 +1619,85 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(parse.stdout)
             ast = __import__("json").loads(payload["ast"])
             self.assertEqual(ast["statements"][2]["kind"], "if_stmt")
+
+    def test_default_manifest_native_image_synthesizes_renamed_if_stmt_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_stmt_renamed.ksrc"
+            source_path.write_text(
+                'let message = concat("native ", "stmt")\n'
+                'let ready = eq(message, "native stmt")\n'
+                'if ready {\n'
+                '  print message\n'
+                '} else {\n'
+                '  print "disabled"\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(payload["ast"])
+            self.assertEqual(ast["statements"][0]["name"], "message")
+            self.assertEqual(ast["statements"][1]["name"], "ready")
+            self.assertEqual(ast["statements"][2]["condition"]["name"], "ready")
+            self.assertEqual(ast["statements"][2]["then_body"][0]["expr"]["name"], "message")
+
+    def test_default_manifest_native_image_runs_false_branch_if_stmt_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_stmt_false.ksrc"
+            source_path.write_text(
+                'let message = "native stmt"\n'
+                'let ready = eq(message, "mismatch")\n'
+                'if ready {\n'
+                '  print message\n'
+                '} else {\n'
+                '  print "disabled"\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertEqual(payload["value"], "disabled\n")
+            self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["disabled"]}')
 
 
 if __name__ == "__main__":
