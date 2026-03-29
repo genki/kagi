@@ -35,6 +35,19 @@ typedef struct {
     char *print_name;
 } native_let_print_program_t;
 
+typedef enum {
+    NATIVE_FN_BODY_PRINT_ONLY,
+    NATIVE_FN_BODY_LET_PRINT,
+} native_fn_body_kind_t;
+
+typedef struct {
+    char *fn_name;
+    native_fn_body_kind_t body_kind;
+    native_print_program_t print_body;
+    native_let_print_program_t let_print_body;
+    char *call_name;
+} native_zero_arg_fn_program_t;
+
 static const canonical_case_t CANONICAL_CASES[] = {
     {"hello", "hello.ksrc", "hello.pipeline.json"},
     {"hello_arg_fn", "hello_arg_fn.ksrc", "hello_arg_fn.pipeline.json"},
@@ -665,6 +678,17 @@ static void free_native_let_print_program(native_let_print_program_t *program) {
     program->print_name = NULL;
 }
 
+static void free_native_zero_arg_fn_program(native_zero_arg_fn_program_t *program) {
+    if (!program) {
+        return;
+    }
+    free(program->fn_name);
+    free(program->call_name);
+    free_native_print_program(&program->print_body);
+    free_native_let_print_program(&program->let_print_body);
+    memset(program, 0, sizeof(*program));
+}
+
 static int try_parse_native_print_program(const char *source, native_print_program_t *out) {
     memset(out, 0, sizeof(*out));
     char *copy = strdup(source);
@@ -767,6 +791,129 @@ static int try_parse_native_let_print_program(const char *source, native_let_pri
     out->name = name;
     out->expr = expr;
     out->print_name = print_name;
+    for (size_t i = 0; i < count; ++i) free(lines[i]);
+    free(copy);
+    return 1;
+}
+
+static int try_parse_native_zero_arg_fn_program(const char *source, native_zero_arg_fn_program_t *out) {
+    memset(out, 0, sizeof(*out));
+    char *copy = strdup(source);
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *lines[16] = {0};
+    size_t count = 0;
+    for (char *line = strtok(copy, "\n"); line && count < 16; line = strtok(NULL, "\n")) {
+        char *trimmed = trim_copy(line);
+        if (trimmed[0] != '\0') {
+            lines[count++] = trimmed;
+        } else {
+            free(trimmed);
+        }
+    }
+    if (count < 4 || count > 5) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    const char *fn_prefix = "fn ";
+    if (strncmp(lines[0], fn_prefix, strlen(fn_prefix)) != 0) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t header_len = strlen(lines[0]);
+    if (header_len < strlen(fn_prefix) + 4 || strcmp(lines[0] + header_len - 4, "() {") != 0) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t fn_name_len = header_len - strlen(fn_prefix) - 4;
+    char *fn_name = calloc(fn_name_len + 1, 1);
+    if (!fn_name) {
+        fail("out of memory");
+    }
+    memcpy(fn_name, lines[0] + strlen(fn_prefix), fn_name_len);
+    fn_name[fn_name_len] = '\0';
+    if (!is_ident_start_char((unsigned char)fn_name[0])) {
+        free(fn_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    for (size_t i = 1; fn_name[i]; ++i) {
+        if (!is_ident_part_char((unsigned char)fn_name[i])) {
+            free(fn_name);
+            for (size_t j = 0; j < count; ++j) free(lines[j]);
+            free(copy);
+            return 0;
+        }
+    }
+    if (strcmp(lines[count - 2], "}") != 0) {
+        free(fn_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    const char *call_prefix = "call ";
+    if (strncmp(lines[count - 1], call_prefix, strlen(call_prefix)) != 0) {
+        free(fn_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t call_len = strlen(lines[count - 1]);
+    if (call_len < strlen(call_prefix) + 3 || strcmp(lines[count - 1] + call_len - 2, "()") != 0) {
+        free(fn_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t call_name_len = call_len - strlen(call_prefix) - 2;
+    char *call_name = calloc(call_name_len + 1, 1);
+    if (!call_name) {
+        fail("out of memory");
+    }
+    memcpy(call_name, lines[count - 1] + strlen(call_prefix), call_name_len);
+    call_name[call_name_len] = '\0';
+    if (strcmp(fn_name, call_name) != 0) {
+        free(fn_name);
+        free(call_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+
+    int parsed = 0;
+    if (count == 4) {
+        char body_source[4096];
+        int written = snprintf(body_source, sizeof(body_source), "%s\n", lines[1]);
+        if (written > 0 && (size_t)written < sizeof(body_source) &&
+            try_parse_native_print_program(body_source, &out->print_body)) {
+            out->body_kind = NATIVE_FN_BODY_PRINT_ONLY;
+            parsed = 1;
+        }
+    } else if (count == 5) {
+        char body_source[4096];
+        int written = snprintf(body_source, sizeof(body_source), "%s\n%s\n", lines[1], lines[2]);
+        if (written > 0 && (size_t)written < sizeof(body_source) &&
+            try_parse_native_let_print_program(body_source, &out->let_print_body)) {
+            out->body_kind = NATIVE_FN_BODY_LET_PRINT;
+            parsed = 1;
+        }
+    }
+
+    if (!parsed) {
+        free(fn_name);
+        free(call_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+
+    out->fn_name = fn_name;
+    out->call_name = call_name;
     for (size_t i = 0; i < count; ++i) free(lines[i]);
     free(copy);
     return 1;
@@ -945,6 +1092,118 @@ static char *native_let_print_program_to_artifact_json(const native_let_print_pr
     free(value);
     append_text(&buffer, &length, &capacity, "]}");
     return buffer;
+}
+
+static char *native_zero_arg_fn_program_to_parse_json(const native_zero_arg_fn_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[{\"kind\":\"fn\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->fn_name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[],\"body\":[");
+    if (program->body_kind == NATIVE_FN_BODY_PRINT_ONLY) {
+        for (size_t i = 0; i < program->print_body.count; ++i) {
+            if (i > 0) {
+                append_char(&buffer, &length, &capacity, ',');
+            }
+            append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
+            append_expr_json(&buffer, &length, &capacity, &program->print_body.prints[i]);
+            append_char(&buffer, &length, &capacity, '}');
+        }
+    } else {
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"let\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.name);
+        append_text(&buffer, &length, &capacity, ",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->let_print_body.expr);
+        append_text(&buffer, &length, &capacity, "},{\"kind\":\"print\",\"expr\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.print_name);
+        append_text(&buffer, &length, &capacity, "}}");
+    }
+    append_text(&buffer, &length, &capacity, "]}],\"statements\":[{\"kind\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[]}]}");
+    return buffer;
+}
+
+static char *native_zero_arg_fn_program_to_hir_json(const native_zero_arg_fn_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[{\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->fn_name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[],\"body\":[");
+    if (program->body_kind == NATIVE_FN_BODY_PRINT_ONLY) {
+        for (size_t i = 0; i < program->print_body.count; ++i) {
+            if (i > 0) {
+                append_char(&buffer, &length, &capacity, ',');
+            }
+            append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
+            append_expr_json(&buffer, &length, &capacity, &program->print_body.prints[i]);
+            append_char(&buffer, &length, &capacity, '}');
+        }
+    } else {
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"let\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.name);
+        append_text(&buffer, &length, &capacity, ",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->let_print_body.expr);
+        append_text(&buffer, &length, &capacity, "},{\"kind\":\"print\",\"expr\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.print_name);
+        append_text(&buffer, &length, &capacity, "}}");
+    }
+    append_text(&buffer, &length, &capacity, "]}],\"statements\":[{\"kind\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[]}]}");
+    return buffer;
+}
+
+static char *native_zero_arg_fn_program_to_kir_json(const native_zero_arg_fn_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[{\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->fn_name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[],\"body\":[");
+    if (program->body_kind == NATIVE_FN_BODY_PRINT_ONLY) {
+        for (size_t i = 0; i < program->print_body.count; ++i) {
+            if (i > 0) {
+                append_char(&buffer, &length, &capacity, ',');
+            }
+            append_text(&buffer, &length, &capacity, "{\"op\":\"print\",\"expr\":");
+            append_expr_json(&buffer, &length, &capacity, &program->print_body.prints[i]);
+            append_char(&buffer, &length, &capacity, '}');
+        }
+    } else {
+        append_text(&buffer, &length, &capacity, "{\"op\":\"let\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.name);
+        append_text(&buffer, &length, &capacity, ",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->let_print_body.expr);
+        append_text(&buffer, &length, &capacity, "},{\"op\":\"print\",\"expr\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->let_print_body.print_name);
+        append_text(&buffer, &length, &capacity, "}}");
+    }
+    append_text(&buffer, &length, &capacity, "]}],\"instructions\":[{\"op\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[]}]}");
+    return buffer;
+}
+
+static char *native_zero_arg_fn_program_to_analysis_json(const native_zero_arg_fn_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"analysis_v1\",\"function_arities\":{");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->fn_name);
+    append_text(&buffer, &length, &capacity, ":0},\"effects\":{\"program\":[\"print\"],\"functions\":{");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->fn_name);
+    append_text(&buffer, &length, &capacity, ":[\"print\"]}}}");
+    return buffer;
+}
+
+static char *native_zero_arg_fn_program_to_artifact_json(const native_zero_arg_fn_program_t *program) {
+    if (program->body_kind == NATIVE_FN_BODY_PRINT_ONLY) {
+        return native_print_program_to_artifact_json(&program->print_body);
+    }
+    return native_let_print_program_to_artifact_json(&program->let_print_body);
 }
 
 static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
@@ -1387,10 +1646,15 @@ int main(int argc, char **argv) {
         }
         native_print_program_t native_print_program = {0};
         native_let_print_program_t native_let_print_program = {0};
+        native_zero_arg_fn_program_t native_zero_arg_fn_program = {0};
         int has_native_print_program = try_parse_native_print_program(program_source, &native_print_program);
         int has_native_let_print_program = 0;
+        int has_native_zero_arg_fn_program = 0;
         if (!has_native_print_program) {
             has_native_let_print_program = try_parse_native_let_print_program(program_source, &native_let_print_program);
+        }
+        if (!has_native_print_program && !has_native_let_print_program) {
+            has_native_zero_arg_fn_program = try_parse_native_zero_arg_fn_program(program_source, &native_zero_arg_fn_program);
         }
         if (has_native_print_program) {
             char *raw_ast = native_print_program_to_parse_json(&native_print_program);
@@ -1482,10 +1746,56 @@ int main(int argc, char **argv) {
             free(canonical_frontend);
             return 0;
         }
+        if (has_native_zero_arg_fn_program) {
+            char *raw_ast = native_zero_arg_fn_program_to_parse_json(&native_zero_arg_fn_program);
+            char *raw_hir = native_zero_arg_fn_program_to_hir_json(&native_zero_arg_fn_program);
+            char *raw_kir = native_zero_arg_fn_program_to_kir_json(&native_zero_arg_fn_program);
+            char *raw_analysis = native_zero_arg_fn_program_to_analysis_json(&native_zero_arg_fn_program);
+            char *raw_artifact = native_zero_arg_fn_program_to_artifact_json(&native_zero_arg_fn_program);
+
+            if (strcmp(command, "selfhost-run") == 0) {
+                if (use_json) {
+                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                    fputc('\n', stdout);
+                } else {
+                    emit_print_many_stdout(raw_artifact);
+                }
+            } else if (strcmp(command, "selfhost-check") == 0) {
+                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-emit") == 0) {
+                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-capir") == 0) {
+                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-parse") == 0) {
+                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+                emit_json_string(argv[arg_index + 1]);
+                printf(",\"ast\":");
+                emit_json_string(raw_ast);
+                fputs("}\n", stdout);
+            } else {
+                unsupported_source();
+            }
+
+            free(raw_ast);
+            free(raw_hir);
+            free(raw_kir);
+            free(raw_analysis);
+            free(raw_artifact);
+            free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
+            free(frontend_source);
+            free(program_source);
+            free(frontend_kir);
+            free(canonical_frontend);
+            return 0;
+        }
         const canonical_case_t *matched = match_canonical_case(kagi_home, program_source);
         if (!matched) {
             free_native_print_program(&native_print_program);
             free_native_let_print_program(&native_let_print_program);
+            free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
@@ -1567,6 +1877,7 @@ int main(int argc, char **argv) {
         free(bundle_json);
         free_native_print_program(&native_print_program);
         free_native_let_print_program(&native_let_print_program);
+        free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
         free(frontend_source);
         free(program_source);
         free(frontend_kir);

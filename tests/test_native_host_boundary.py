@@ -1094,7 +1094,101 @@ class NativeHostBoundaryTest(unittest.TestCase):
                 },
             )
 
-    @unittest.expectedFailure
+    def test_future_line_parser_native_image_can_parse_noncanonical_zero_arg_fn_call_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_copy = tmp_path / "frontend_alias.ks"
+            frontend_copy.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            zero_arg_program = tmp_path / "future_zero_arg_fn.ksrc"
+            zero_arg_program.write_text(
+                'fn greet() {\n'
+                '  print "hello from zero arg"\n'
+                '}\n\n'
+                'call greet()\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(frontend_copy), str(zero_arg_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["entry"], "parse")
+            self.assertEqual(
+                __import__("json").loads(payload["ast"]),
+                {
+                    "kind": "program",
+                    "functions": [
+                        {
+                            "kind": "fn",
+                            "name": "greet",
+                            "params": [],
+                            "body": [
+                                {
+                                    "kind": "print",
+                                    "expr": {
+                                        "kind": "string",
+                                        "value": "hello from zero arg",
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                    "statements": [
+                        {
+                            "kind": "call",
+                            "name": "greet",
+                            "args": [],
+                        }
+                    ],
+                },
+            )
+
     def test_future_line_parser_native_image_can_run_noncanonical_zero_arg_fn_call_program(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
