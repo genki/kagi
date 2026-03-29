@@ -108,13 +108,57 @@ static int string_equals_file(const char *text, const char *path) {
     return equal;
 }
 
+static int is_space_outside_string(unsigned char ch) {
+    return ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t';
+}
+
+static int normalized_source_equals(const char *left, const char *right) {
+    size_t i = 0;
+    size_t j = 0;
+    int in_string_left = 0;
+    int in_string_right = 0;
+    while (left[i] || right[j]) {
+        while (left[i] && !in_string_left && is_space_outside_string((unsigned char)left[i])) {
+            i++;
+        }
+        while (right[j] && !in_string_right && is_space_outside_string((unsigned char)right[j])) {
+            j++;
+        }
+        if (left[i] != right[j]) {
+            return 0;
+        }
+        if (!left[i] && !right[j]) {
+            return 1;
+        }
+        if (left[i] == '"' && (i == 0 || left[i - 1] != '\\')) {
+            in_string_left = !in_string_left;
+        }
+        if (right[j] == '"' && (j == 0 || right[j - 1] != '\\')) {
+            in_string_right = !in_string_right;
+        }
+        i++;
+        j++;
+    }
+    return 1;
+}
+
+static int normalized_source_equals_file(const char *text, const char *path) {
+    char *file_text = read_text_file(path);
+    if (!file_text) {
+        return 0;
+    }
+    int equal = normalized_source_equals(text, file_text);
+    free(file_text);
+    return equal;
+}
+
 static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
     char examples_dir[PATH_MAX];
     char source_path[PATH_MAX];
     join_path(examples_dir, sizeof(examples_dir), workspace, "examples");
     for (size_t i = 0; i < sizeof(CANONICAL_CASES) / sizeof(CANONICAL_CASES[0]); ++i) {
         join_path(source_path, sizeof(source_path), examples_dir, CANONICAL_CASES[i].source_name);
-        if (string_equals_file(program_source, source_path)) {
+        if (normalized_source_equals_file(program_source, source_path)) {
             return &CANONICAL_CASES[i];
         }
     }
@@ -475,7 +519,10 @@ int main(int argc, char **argv) {
             fail("missing frontend path");
         }
         char *frontend_source = read_text_file(frontend_arg);
-        if (!frontend_source || strcmp(frontend_source, canonical_frontend) != 0) {
+        if (
+            !frontend_source ||
+            (strcmp(frontend_source, canonical_frontend) != 0 && strcmp(frontend_source, frontend_kir) != 0)
+        ) {
             free(frontend_source);
             free(frontend_kir);
             free(canonical_frontend);
@@ -528,7 +575,11 @@ int main(int argc, char **argv) {
         }
         char *frontend_source = read_text_file(argv[arg_index]);
         char *program_source = read_text_file(argv[arg_index + 1]);
-        if (!frontend_source || !program_source || strcmp(frontend_source, canonical_frontend) != 0) {
+        if (
+            !frontend_source ||
+            !program_source ||
+            (strcmp(frontend_source, canonical_frontend) != 0 && strcmp(frontend_source, frontend_kir) != 0)
+        ) {
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
