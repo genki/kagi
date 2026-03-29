@@ -521,7 +521,7 @@ int main(int argc, char **argv) {
         char *frontend_source = read_text_file(frontend_arg);
         if (
             !frontend_source ||
-            (strcmp(frontend_source, canonical_frontend) != 0 && strcmp(frontend_source, frontend_kir) != 0)
+            (!normalized_source_equals(frontend_source, canonical_frontend) && strcmp(frontend_source, frontend_kir) != 0)
         ) {
             free(frontend_source);
             free(frontend_kir);
@@ -578,7 +578,7 @@ int main(int argc, char **argv) {
         if (
             !frontend_source ||
             !program_source ||
-            (strcmp(frontend_source, canonical_frontend) != 0 && strcmp(frontend_source, frontend_kir) != 0)
+            (!normalized_source_equals(frontend_source, canonical_frontend) && strcmp(frontend_source, frontend_kir) != 0)
         ) {
             free(frontend_source);
             free(program_source);
