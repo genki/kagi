@@ -593,6 +593,43 @@ static char *trim_copy(const char *text) {
     return out;
 }
 
+static int compact_line_equals(const char *left, const char *right) {
+    char *left_trimmed = trim_copy(left);
+    char *right_trimmed = trim_copy(right);
+    int equal = normalized_source_equals(left_trimmed, right_trimmed);
+    free(left_trimmed);
+    free(right_trimmed);
+    return equal;
+}
+
+static char *extract_call_inside(const char *text, const char *name) {
+    char *trimmed = trim_copy(text);
+    size_t name_len = strlen(name);
+    size_t len = strlen(trimmed);
+    if (len <= name_len + 1 || strncmp(trimmed, name, name_len) != 0) {
+        free(trimmed);
+        return NULL;
+    }
+    size_t index = name_len;
+    while (trimmed[index] == ' ' || trimmed[index] == '\t') {
+        index++;
+    }
+    if (trimmed[index] != '(' || trimmed[len - 1] != ')') {
+        free(trimmed);
+        return NULL;
+    }
+    index += 1;
+    size_t inside_len = len - index - 1;
+    char *inside = calloc(inside_len + 1, 1);
+    if (!inside) {
+        fail("out of memory");
+    }
+    memcpy(inside, trimmed + index, inside_len);
+    inside[inside_len] = '\0';
+    free(trimmed);
+    return inside;
+}
+
 static int parse_ident_expr(const char *text, char **out);
 
 static int parse_string_literal_expr(const char *text, char **out) {
@@ -626,16 +663,8 @@ static int parse_print_expr(const char *text, native_expr_t *out) {
         free(trimmed);
         return 1;
     }
-    const char *prefix = "concat(";
-    size_t prefix_len = strlen(prefix);
-    size_t len = strlen(trimmed);
-    if (len > prefix_len + 1 && strncmp(trimmed, prefix, prefix_len) == 0 && trimmed[len - 1] == ')') {
-        char *inside = calloc(len - prefix_len, 1);
-        if (!inside) {
-            fail("out of memory");
-        }
-        memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
-        inside[len - prefix_len - 1] = '\0';
+    char *inside = extract_call_inside(trimmed, "concat");
+    if (inside) {
         int in_string = 0;
         char *comma = NULL;
         for (char *cursor = inside; *cursor; ++cursor) {
@@ -717,19 +746,11 @@ static int parse_simple_expr(const char *text, native_expr_t *out) {
 
 static int parse_eq_var_string_expr(const char *text, native_expr_t *out) {
     char *trimmed = trim_copy(text);
-    const char *prefix = "eq(";
-    size_t prefix_len = strlen(prefix);
-    size_t len = strlen(trimmed);
-    if (len <= prefix_len + 1 || strncmp(trimmed, prefix, prefix_len) != 0 || trimmed[len - 1] != ')') {
+    char *inside = extract_call_inside(trimmed, "eq");
+    if (!inside) {
         free(trimmed);
         return 0;
     }
-    char *inside = calloc(len - prefix_len, 1);
-    if (!inside) {
-        fail("out of memory");
-    }
-    memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
-    inside[len - prefix_len - 1] = '\0';
     int in_string = 0;
     char *comma = NULL;
     for (char *cursor = inside; *cursor; ++cursor) {
@@ -771,19 +792,11 @@ static int parse_eq_var_string_expr(const char *text, native_expr_t *out) {
 
 static int parse_if_var_var_string_expr(const char *text, native_expr_t *out) {
     char *trimmed = trim_copy(text);
-    const char *prefix = "if(";
-    size_t prefix_len = strlen(prefix);
-    size_t len = strlen(trimmed);
-    if (len <= prefix_len + 1 || strncmp(trimmed, prefix, prefix_len) != 0 || trimmed[len - 1] != ')') {
+    char *inside = extract_call_inside(trimmed, "if");
+    if (!inside) {
         free(trimmed);
         return 0;
     }
-    char *inside = calloc(len - prefix_len, 1);
-    if (!inside) {
-        fail("out of memory");
-    }
-    memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
-    inside[len - prefix_len - 1] = '\0';
     int in_string = 0;
     int comma_count = 0;
     char *commas[2] = {0};
@@ -1055,18 +1068,22 @@ static int try_parse_native_stmt_program(const char *source, native_stmt_program
             }
             stmt.kind = NATIVE_STMT_IF_STMT;
             size_t header_len = strlen(lines[i]);
-            if (header_len < 5 || strcmp(lines[i] + header_len - 2, " {") != 0) {
+            if (header_len < 4 || lines[i][header_len - 1] != '{') {
                 free_native_stmt_program(out);
                 for (size_t j = 0; j < count; ++j) free(lines[j]);
                 free(copy);
                 return 0;
             }
-            char *condition = calloc(header_len - 4, 1);
+            size_t condition_end = header_len - 1;
+            while (condition_end > 0 && (lines[i][condition_end - 1] == ' ' || lines[i][condition_end - 1] == '\t')) {
+                condition_end--;
+            }
+            char *condition = calloc(condition_end - 2, 1);
             if (!condition) {
                 fail("out of memory");
             }
-            memcpy(condition, lines[i] + 3, header_len - 5);
-            condition[header_len - 5] = '\0';
+            memcpy(condition, lines[i] + 3, condition_end - 3);
+            condition[condition_end - 3] = '\0';
             char *condition_ident = NULL;
             if (!parse_ident_expr(condition, &condition_ident)) {
                 free(condition);
@@ -1078,9 +1095,9 @@ static int try_parse_native_stmt_program(const char *source, native_stmt_program
             free(condition);
             stmt.condition_name = condition_ident;
             if (strncmp(lines[i + 1], "print ", 6) != 0 ||
-                strcmp(lines[i + 2], "} else {") != 0 ||
+                !compact_line_equals(lines[i + 2], "} else {") ||
                 strncmp(lines[i + 3], "print ", 6) != 0 ||
-                strcmp(lines[i + 4], "}") != 0 ||
+                !compact_line_equals(lines[i + 4], "}") ||
                 !parse_runtime_expr(lines[i + 1] + 6, &stmt.then_expr) ||
                 !parse_runtime_expr(lines[i + 3] + 6, &stmt.else_expr)) {
                 free_native_stmt(&stmt);
@@ -1205,7 +1222,7 @@ static int try_parse_native_function_program(const char *source, native_function
         return 0;
     }
     size_t header_len = strlen(lines[0]);
-    if (header_len < 6 || strcmp(lines[0] + header_len - 3, ") {") != 0) {
+    if (header_len < 5 || lines[0][header_len - 1] != '{') {
         for (size_t i = 0; i < count; ++i) free(lines[i]);
         free(copy);
         return 0;
@@ -1231,8 +1248,14 @@ static int try_parse_native_function_program(const char *source, native_function
         return 0;
     }
     free(fn_name_raw);
-    char *param_end = strstr(open_paren, ") {");
-    size_t param_len = (size_t)(param_end - open_paren - 1);
+    char *param_close = strchr(open_paren, ')');
+    if (!param_close) {
+        free(fn_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t param_len = (size_t)(param_close - open_paren - 1);
     char *param_name = NULL;
     if (param_len > 0) {
         char *param_raw = calloc(param_len + 1, 1);
@@ -1255,10 +1278,10 @@ static int try_parse_native_function_program(const char *source, native_function
     int found_close = 0;
     int depth = 1;
     for (size_t i = 1; i < count; ++i) {
-        if (strcmp(lines[i], "} else {") == 0) {
+        if (compact_line_equals(lines[i], "} else {")) {
             continue;
         }
-        if (strcmp(lines[i], "}") == 0) {
+        if (compact_line_equals(lines[i], "}")) {
             depth--;
             if (depth == 0) {
                 close_index = i;
@@ -1268,7 +1291,7 @@ static int try_parse_native_function_program(const char *source, native_function
             continue;
         }
         size_t line_len = strlen(lines[i]);
-        if (line_len >= 2 && strcmp(lines[i] + line_len - 2, " {") == 0 && strncmp(lines[i], "if ", 3) == 0) {
+        if (line_len >= 4 && strncmp(lines[i], "if ", 3) == 0 && lines[i][line_len - 1] == '{') {
             depth++;
         }
     }

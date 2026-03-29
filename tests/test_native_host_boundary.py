@@ -1928,6 +1928,83 @@ class NativeHostBoundaryTest(unittest.TestCase):
             run_payload = __import__("json").loads(run.stdout)
             self.assertEqual(run_payload["value"], "hello, world!\n")
 
+    def test_minified_if_stmt_variant_is_snapshotless(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            source_path = tmp_path / "if_stmt_minified.ksrc"
+            source_path.write_text(
+                'let greeting = "hello, world!"\n'
+                'let enabled = eq(greeting, "hello, world!")\n'
+                'if enabled{\n'
+                'print greeting\n'
+                '}else{\n'
+                'print "disabled"\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertEqual(payload["value"], "hello, world!\n")
+
+    def test_minified_function_header_and_expr_spacing_is_snapshotless(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            source_path = tmp_path / "function_minified.ksrc"
+            source_path.write_text(
+                'fn shout(text){\n'
+                'print concat ( text , "!" )\n'
+                '}\n'
+                'call shout("hello")\n',
+                encoding="utf-8",
+            )
+
+            capir = subprocess.run(
+                [str(launcher_bin), "selfhost-capir", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(capir.returncode, 0, capir.stderr)
+            payload = __import__("json").loads(capir.stdout)
+            kir = payload["kir"]
+            if isinstance(kir, str):
+                kir = __import__("json").loads(kir)
+            self.assertEqual(kir["functions"][0]["name"], "shout")
+            self.assertEqual(kir["instructions"][0]["name"], "shout")
+
     def test_generic_function_native_path_does_not_need_selfhost_entries_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
