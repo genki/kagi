@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -42,6 +46,70 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('ENTRY_TARGET=kagi.host_entry', manifest)
         self.assertIn('IMAGE_REL=app/kagi_app.zip', manifest)
         self.assertIn('WORKSPACE_REL=workspace', manifest)
+
+    def test_launcher_source_supports_native_direct_runtime_kind(self):
+        source = self.launcher_source.read_text(encoding="utf-8")
+        self.assertIn('strcmp(manifest.runtime_kind, "native") == 0', source)
+        self.assertIn('strcmp(manifest.entry_style, "direct") != 0', source)
+        self.assertIn('KAGI_IMAGE', source)
+        self.assertIn('KAGI_ENTRY_TARGET', source)
+        self.assertIn('failed to exec native runtime', source)
+
+    def test_built_launcher_can_execute_fake_native_runtime_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            fake_runtime = dist / "bin" / "native-runtime"
+            fake_runtime.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "printf 'entry=%s\\n' \"$1\"\n"
+                "printf 'image=%s\\n' \"$KAGI_IMAGE\"\n"
+                "printf 'home=%s\\n' \"$KAGI_HOME\"\n"
+                "shift\n"
+                "printf 'args=%s\\n' \"$*\"\n",
+                encoding="utf-8",
+            )
+            fake_runtime.chmod(0o755)
+
+            (dist / "app" / "native.img").write_text("native-image", encoding="utf-8")
+            (dist / "app" / "kagi_runtime.env").write_text(
+                "RUNTIME_KIND=native\n"
+                "RUNTIME_BIN_REL=bin/native-runtime\n"
+                "ENTRY_STYLE=direct\n"
+                "ENTRY_TARGET=selfhost.bootstrap\n"
+                "IMAGE_REL=app/native.img\n"
+                "WORKSPACE_REL=workspace\n",
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [str(launcher_bin), "--json", "hello.ks"],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("entry=selfhost.bootstrap", completed.stdout)
+            self.assertIn(f"image={dist / 'app' / 'native.img'}", completed.stdout)
+            self.assertIn(f"home={dist / 'workspace'}", completed.stdout)
+            self.assertIn("args=--json hello.ks", completed.stdout)
 
 
 if __name__ == "__main__":

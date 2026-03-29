@@ -138,37 +138,66 @@ int main(int argc, char **argv) {
     join_path_or_die(image_path, sizeof(image_path), dist_root, manifest.image_rel);
     join_path_or_die(kagi_home, sizeof(kagi_home), dist_root, manifest.workspace_rel);
 
-    if (strcmp(manifest.runtime_kind, "python") != 0) {
-        fprintf(stderr, "unsupported runtime kind: %s\n", manifest.runtime_kind);
-        return 1;
-    }
-    if (strcmp(manifest.entry_style, "python-module") != 0) {
-        fprintf(stderr, "unsupported entry style: %s\n", manifest.entry_style);
-        return 1;
-    }
-
-    set_env_or_die("PYTHONHOME", python_home);
-    set_env_or_die("PYTHONPATH", image_path);
-    set_env_or_die("PYTHONNOUSERSITE", "1");
-    set_env_or_die("PYTHONDONTWRITEBYTECODE", "1");
     set_env_or_die("KAGI_HOME", kagi_home);
 
-    char **child_argv = calloc((size_t)argc + 5, sizeof(char *));
-    if (!child_argv) {
-        perror("calloc");
+    if (strcmp(manifest.runtime_kind, "python") == 0) {
+        if (strcmp(manifest.entry_style, "python-module") != 0) {
+            fprintf(stderr, "unsupported entry style for python runtime: %s\n", manifest.entry_style);
+            return 1;
+        }
+
+        set_env_or_die("PYTHONHOME", python_home);
+        set_env_or_die("PYTHONPATH", image_path);
+        set_env_or_die("PYTHONNOUSERSITE", "1");
+        set_env_or_die("PYTHONDONTWRITEBYTECODE", "1");
+
+        char **child_argv = calloc((size_t)argc + 5, sizeof(char *));
+        if (!child_argv) {
+            perror("calloc");
+            return 1;
+        }
+        int i = 0;
+        child_argv[i++] = runtime_bin;
+        child_argv[i++] = "-S";
+        child_argv[i++] = "-m";
+        child_argv[i++] = manifest.entry_target;
+        for (int j = 1; j < argc; ++j) {
+            child_argv[i++] = argv[j];
+        }
+        child_argv[i] = NULL;
+
+        execve(runtime_bin, child_argv, environ);
+        fprintf(stderr, "failed to exec bundled python: %s\n", strerror(errno));
         return 1;
     }
-    int i = 0;
-    child_argv[i++] = runtime_bin;
-    child_argv[i++] = "-S";
-    child_argv[i++] = "-m";
-    child_argv[i++] = manifest.entry_target;
-    for (int j = 1; j < argc; ++j) {
-        child_argv[i++] = argv[j];
-    }
-    child_argv[i] = NULL;
 
-    execve(runtime_bin, child_argv, environ);
-    fprintf(stderr, "failed to exec bundled python: %s\n", strerror(errno));
+    if (strcmp(manifest.runtime_kind, "native") == 0) {
+        if (strcmp(manifest.entry_style, "direct") != 0) {
+            fprintf(stderr, "unsupported entry style for native runtime: %s\n", manifest.entry_style);
+            return 1;
+        }
+
+        set_env_or_die("KAGI_IMAGE", image_path);
+        set_env_or_die("KAGI_ENTRY_TARGET", manifest.entry_target);
+
+        char **child_argv = calloc((size_t)argc + 3, sizeof(char *));
+        if (!child_argv) {
+            perror("calloc");
+            return 1;
+        }
+        int i = 0;
+        child_argv[i++] = runtime_bin;
+        child_argv[i++] = manifest.entry_target;
+        for (int j = 1; j < argc; ++j) {
+            child_argv[i++] = argv[j];
+        }
+        child_argv[i] = NULL;
+
+        execve(runtime_bin, child_argv, environ);
+        fprintf(stderr, "failed to exec native runtime: %s\n", strerror(errno));
+        return 1;
+    }
+
+    fprintf(stderr, "unsupported runtime kind: %s\n", manifest.runtime_kind);
     return 1;
 }
