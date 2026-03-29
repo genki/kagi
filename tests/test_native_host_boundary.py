@@ -23,7 +23,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
     def test_vendored_portable_launcher_source_exists(self):
         self.assertTrue(self.launcher_source.exists())
 
-    def test_vendored_portable_launcher_captures_current_cpython_host_boundary(self):
+    def test_vendored_portable_launcher_keeps_python_bridge_as_compatibility_boundary(self):
         source = self.launcher_source.read_text(encoding="utf-8")
         self.assertIn('kagi_runtime.env', source)
         self.assertIn('RUNTIME_KIND', source)
@@ -42,14 +42,20 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('kagi_launcher.c', script)
         self.assertIn('cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -O2 -Wall -Wextra -std=c11', script)
 
-    def test_runtime_manifest_exists_and_describes_current_host_target(self):
+    def test_runtime_manifest_exists_and_describes_current_native_target(self):
         manifest = self.runtime_manifest.read_text(encoding="utf-8")
-        self.assertIn('RUNTIME_KIND=python', manifest)
-        self.assertIn('RUNTIME_BIN_REL=bin/python3', manifest)
-        self.assertIn('ENTRY_STYLE=python-module', manifest)
+        self.assertIn('RUNTIME_KIND=native', manifest)
+        self.assertIn('RUNTIME_BIN_REL=bin/kagi-native-runtime', manifest)
+        self.assertIn('ENTRY_STYLE=direct', manifest)
         self.assertIn('ENTRY_TARGET=kagi.host_entry', manifest)
-        self.assertIn('IMAGE_REL=app/kagi_app.zip', manifest)
+        self.assertIn('IMAGE_REL=app/kagi-canonical-image', manifest)
         self.assertIn('WORKSPACE_REL=workspace', manifest)
+
+    def test_default_manifest_selects_native_canonical_image(self):
+        manifest = self.runtime_manifest.read_text(encoding="utf-8")
+        self.assertNotIn('RUNTIME_KIND=python', manifest)
+        self.assertNotIn('RUNTIME_BIN_REL=bin/python3', manifest)
+        self.assertNotIn('IMAGE_REL=app/kagi_app.zip', manifest)
 
     def test_launcher_source_supports_native_direct_runtime_kind(self):
         source = self.launcher_source.read_text(encoding="utf-8")
@@ -247,6 +253,55 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(bootstrap.stdout)
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(self.root / "examples" / "hello_arg_fn.ksrc")],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(run.stdout, "hello, world!\n")
+
+    def test_built_launcher_can_execute_canonical_native_image_from_default_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
 
             run = subprocess.run(
                 [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(self.root / "examples" / "hello_arg_fn.ksrc")],
