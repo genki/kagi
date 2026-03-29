@@ -751,6 +751,165 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(run.stdout, "hello, world!\n")
 
+    @unittest.expectedFailure
+    def test_future_line_parser_native_image_can_parse_noncanonical_single_print_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_copy = tmp_path / "frontend_alias.ks"
+            frontend_copy.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            variant_program = tmp_path / "future_single_print.ksrc"
+            variant_program.write_text(
+                'print "hello from future native parser"\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(frontend_copy), str(variant_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["entry"], "parse")
+            self.assertEqual(
+                __import__("json").loads(payload["ast"]),
+                {
+                    "kind": "program",
+                    "functions": [],
+                    "statements": [
+                        {
+                            "kind": "print",
+                            "expr": {
+                                "kind": "string",
+                                "value": "hello from future native parser",
+                            },
+                        }
+                    ],
+                },
+            )
+
+    @unittest.expectedFailure
+    def test_future_line_parser_native_image_can_run_noncanonical_let_concat_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_copy = tmp_path / "frontend_alias.ks"
+            frontend_copy.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            variant_program = tmp_path / "future_let_concat.ksrc"
+            variant_program.write_text(
+                'let greeting = concat("native ", "parser future")\n'
+                'print greeting\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(frontend_copy), str(variant_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["value"], "native parser future\n")
+            self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["native parser future"]}')
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(self.root / "examples" / "selfhost_frontend.ks"), str(variant_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            self.assertIn('"name":"shout"', payload["ast"])
+            self.assertIn('"params":["x"]', payload["ast"])
+
 
 if __name__ == "__main__":
     unittest.main()

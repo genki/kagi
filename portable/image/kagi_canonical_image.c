@@ -327,6 +327,127 @@ static char *source_fingerprint(const char *source) {
     return buffer;
 }
 
+static ident_table_t collect_identifiers_in_order(const char *source) {
+    ident_table_t table = {0};
+    size_t i = 0;
+    while (source[i]) {
+        unsigned char ch = (unsigned char)source[i];
+        if (is_space_outside_string(ch)) {
+            i++;
+            continue;
+        }
+        if (ch == '"') {
+            i++;
+            while (source[i]) {
+                if (source[i] == '\\' && source[i + 1]) {
+                    i += 2;
+                    continue;
+                }
+                if (source[i] == '"') {
+                    i++;
+                    break;
+                }
+                i++;
+            }
+            continue;
+        }
+        if (is_ident_start_char(ch)) {
+            size_t start = i;
+            i++;
+            while (is_ident_part_char((unsigned char)source[i])) {
+                i++;
+            }
+            size_t ident_len = i - start;
+            char *ident = calloc(ident_len + 1, 1);
+            if (!ident) {
+                fail("out of memory");
+            }
+            memcpy(ident, source + start, ident_len);
+            ident[ident_len] = '\0';
+            if (!is_reserved_word(ident)) {
+                (void)intern_identifier(&table, ident);
+            }
+            free(ident);
+            continue;
+        }
+        i++;
+    }
+    return table;
+}
+
+static char *replace_quoted_identifier(const char *text, const char *old_name, const char *new_name) {
+    size_t old_len = strlen(old_name);
+    size_t new_len = strlen(new_name);
+    size_t capacity = strlen(text) + 1;
+    char *buffer = calloc(capacity, 1);
+    if (!buffer) {
+        fail("out of memory");
+    }
+    size_t length = 0;
+    const char *cursor = text;
+    while (*cursor) {
+        const char *match = strstr(cursor, old_name);
+        if (!match) {
+            append_text(&buffer, &length, &capacity, cursor);
+            break;
+        }
+        int quoted = match > text && match[old_len] == '"' && *(match - 1) == '"';
+        int value_position = quoted && match - 2 >= text && (
+            *(match - 2) == ':' ||
+            *(match - 2) == '[' ||
+            *(match - 2) == ','
+        );
+        if (!value_position) {
+            size_t prefix_len = (size_t)(match - cursor) + old_len;
+            char *chunk = calloc(prefix_len + 1, 1);
+            if (!chunk) {
+                fail("out of memory");
+            }
+            memcpy(chunk, cursor, prefix_len);
+            append_text(&buffer, &length, &capacity, chunk);
+            free(chunk);
+            cursor = match + old_len;
+            continue;
+        }
+        size_t prefix_len = (size_t)(match - cursor);
+        char *chunk = calloc(prefix_len + 1, 1);
+        if (!chunk) {
+            fail("out of memory");
+        }
+        memcpy(chunk, cursor, prefix_len);
+        append_text(&buffer, &length, &capacity, chunk);
+        free(chunk);
+        append_text(&buffer, &length, &capacity, new_name);
+        cursor = match + old_len;
+    }
+    return buffer;
+}
+
+static char *rewrite_snapshot_identifiers(const char *raw, const char *canonical_source, const char *actual_source) {
+    ident_table_t canonical = collect_identifiers_in_order(canonical_source);
+    ident_table_t actual = collect_identifiers_in_order(actual_source);
+    char *current = strdup(raw);
+    if (!current) {
+        fail("out of memory");
+    }
+    if (canonical.count != actual.count) {
+        ident_table_free(&canonical);
+        ident_table_free(&actual);
+        return current;
+    }
+    for (size_t i = 0; i < canonical.count; ++i) {
+        if (strcmp(canonical.items[i], actual.items[i]) == 0) {
+            continue;
+        }
+        char *next = replace_quoted_identifier(current, canonical.items[i], actual.items[i]);
+        free(current);
+        current = next;
+    }
+    ident_table_free(&canonical);
+    ident_table_free(&actual);
+    return current;
+}
+
 static int fingerprint_source_equals_file(const char *text, const char *path) {
     char *file_text = read_text_file(path);
     if (!file_text) {
@@ -789,17 +910,21 @@ int main(int argc, char **argv) {
             return 1;
         }
 
+        char canonical_program_path[PATH_MAX];
+        join_path(canonical_program_path, sizeof(canonical_program_path), examples_dir, matched->source_name);
+        char *canonical_program_source = read_text_file(canonical_program_path);
         char *raw_ast = load_entry_text(examples_dir, matched->stem, "parse");
         char *raw_hir = load_entry_text(examples_dir, matched->stem, "hir");
         char *raw_kir = load_entry_text(examples_dir, matched->stem, "kir");
         char *raw_analysis = load_entry_text(examples_dir, matched->stem, "analysis");
         char *raw_artifact = load_entry_text(examples_dir, matched->stem, "compile");
         char *bundle_json = load_entry_text(examples_dir, matched->stem, "pipeline");
-        if (!raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact || !bundle_json) {
+        if (!canonical_program_source || !raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact || !bundle_json) {
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
             free(canonical_frontend);
+            free(canonical_program_source);
             free(raw_ast);
             free(raw_hir);
             free(raw_kir);
@@ -808,6 +933,20 @@ int main(int argc, char **argv) {
             free(bundle_json);
             fail("missing canonical entry snapshot");
         }
+
+        char *mapped_ast = rewrite_snapshot_identifiers(raw_ast, canonical_program_source, program_source);
+        char *mapped_hir = rewrite_snapshot_identifiers(raw_hir, canonical_program_source, program_source);
+        char *mapped_kir = rewrite_snapshot_identifiers(raw_kir, canonical_program_source, program_source);
+        char *mapped_analysis = rewrite_snapshot_identifiers(raw_analysis, canonical_program_source, program_source);
+        free(raw_ast);
+        free(raw_hir);
+        free(raw_kir);
+        free(raw_analysis);
+        raw_ast = mapped_ast;
+        raw_hir = mapped_hir;
+        raw_kir = mapped_kir;
+        raw_analysis = mapped_analysis;
+        free(canonical_program_source);
 
         if (strcmp(command, "selfhost-run") == 0) {
             if (use_json) {
