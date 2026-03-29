@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from .bootstrap_builders import BOOTSTRAP_BUILTINS
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
 from .kir import parse_kir_program_v0, serialize_kir_program_v0
+from .kir_runtime import KIRExecutionContextV0
 from .selfhost_bundle import SelfhostPipelineBundleV1, build_selfhost_pipeline_bundle_v1, parse_selfhost_pipeline_bundle_v1
 from .subset_builtins import CORE_BUILTINS
 
 
 SUBSET_KIR_BUILTINS = CORE_BUILTINS | BOOTSTRAP_BUILTINS
+
+
+@dataclass(frozen=True)
+class SelfhostBuildResultV1:
+    stage0_kir: str
+    stage1_kir: str
+    stage2_kir: str
+
+    @property
+    def fixed_point(self) -> bool:
+        return self.stage1_kir == self.stage2_kir
 
 
 def parse_subset_program(source: str):
@@ -30,14 +44,26 @@ def execute_subset_entry_via_kir_v0(source: str, *, entry: str, args: list[objec
     return execute_subset_entry_via_kir_v0_impl(source, entry=entry, args=args)
 
 
-def execute_kir_entry_v0(program, entry, args, *, builtins=None):
+def execute_kir_entry_v0(program, entry, args, *, builtins=None, context: KIRExecutionContextV0 | None = None):
     from .capir_runtime import execute_kir_entry_fast_v0
     from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
 
-    fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins)
-    if fast is not None:
-        return fast
-    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins)
+    if context is None:
+        fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins)
+        if fast is not None:
+            return fast
+    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins, context=context)
+
+
+def _selfhost_error(message: str) -> DiagnosticError:
+    return DiagnosticError(diagnostic_from_runtime_error("selfhost", message))
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise _selfhost_error(f"missing selfhost artifact: {path.name}") from exc
 
 
 def execute_selfhost_frontend_entry_v1(frontend_source: str, *, entry: str, args: list[object]) -> object:
@@ -48,7 +74,13 @@ def execute_selfhost_frontend_entry_v1(frontend_source: str, *, entry: str, args
     if kir is None:
         kir = try_parse_selfhost_frontend_kir_v1(frontend_source)
     if kir is not None:
-        return execute_kir_entry_v0(kir, entry=entry, args=list(args), builtins=SUBSET_KIR_BUILTINS)
+        canonical_source, _ = _canonical_frontend_texts_v1()
+        return _execute_frontend_kir_entry_v1(
+            canonical_source,
+            serialize_kir_program_v0(kir),
+            entry=entry,
+            args=list(args),
+        )
     return execute_subset_entry_via_kir_v0(frontend_source, entry=entry, args=list(args))
 
 
@@ -72,15 +104,7 @@ def execute_selfhost_frontend_pipeline_bundle_v1(
 
 
 def compile_selfhost_frontend_to_kir_v1(frontend_source: str) -> str:
-    kir = load_canonical_selfhost_frontend_kir_v1(frontend_source)
-    if kir is not None:
-        return serialize_kir_program_v0(kir)
-    kir = try_parse_selfhost_frontend_kir_v1(frontend_source)
-    if kir is not None:
-        return serialize_kir_program_v0(kir)
-    program = parse_subset_program(frontend_source)
-    kir = lower_subset_program_to_kir_v0(program)
-    return serialize_kir_program_v0(kir)
+    return build_selfhost_frontend_v1(frontend_source).stage1_kir
 
 
 def try_parse_selfhost_frontend_kir_v1(frontend_source: str):
@@ -91,8 +115,97 @@ def try_parse_selfhost_frontend_kir_v1(frontend_source: str):
 
 
 def canonical_selfhost_frontend_paths_v1() -> tuple[Path, Path]:
+    env_home = os.environ.get("KAGI_HOME")
+    if env_home:
+        examples_dir = Path(env_home) / "examples"
+        if examples_dir.exists():
+            return examples_dir / "selfhost_frontend.ks", examples_dir / "selfhost_frontend.kir.json"
     examples_dir = Path(__file__).resolve().parents[2] / "examples"
     return examples_dir / "selfhost_frontend.ks", examples_dir / "selfhost_frontend.kir.json"
+
+
+def _canonical_frontend_texts_v1() -> tuple[str, str]:
+    source_path, kir_path = canonical_selfhost_frontend_paths_v1()
+    return _read_text(source_path), _read_text(kir_path)
+
+
+def _execute_frontend_kir_entry_v1(
+    program_source: str,
+    program_kir: str,
+    *,
+    entry: str,
+    args: list[object],
+) -> object:
+    program = parse_kir_program_v0(program_kir)
+    return execute_kir_entry_v0(
+        program,
+        entry=entry,
+        args=list(args),
+        builtins=SUBSET_KIR_BUILTINS,
+        context=KIRExecutionContextV0(
+            current_program_source=program_source,
+            current_program_kir=program_kir,
+        ),
+    )
+
+
+def build_selfhost_frontend_v1(frontend_source: str) -> SelfhostBuildResultV1:
+    canonical_source, canonical_stage0_kir = _canonical_frontend_texts_v1()
+
+    kir = try_parse_selfhost_frontend_kir_v1(frontend_source)
+    if kir is not None:
+        stage1_kir = _execute_frontend_kir_entry_v1(
+            canonical_source,
+            frontend_source,
+            entry="freeze",
+            args=[],
+        )
+        if not isinstance(stage1_kir, str):
+            raise _selfhost_error("freeze entry must return kir json")
+        stage2_kir = _execute_frontend_kir_entry_v1(
+            canonical_source,
+            stage1_kir,
+            entry="freeze",
+            args=[],
+        )
+        if not isinstance(stage2_kir, str):
+            raise _selfhost_error("freeze entry must return kir json")
+        if try_parse_selfhost_frontend_kir_v1(stage1_kir) is None or try_parse_selfhost_frontend_kir_v1(stage2_kir) is None:
+            raise _selfhost_error("self-build produced invalid kir json")
+        return SelfhostBuildResultV1(
+            stage0_kir=frontend_source,
+            stage1_kir=stage1_kir,
+            stage2_kir=stage2_kir,
+        )
+
+    if frontend_source != canonical_source:
+        raise _selfhost_error("error: unsupported source")
+
+    stage1_kir = _execute_frontend_kir_entry_v1(
+        canonical_source,
+        canonical_stage0_kir,
+        entry="self_build",
+        args=[frontend_source],
+    )
+    if not isinstance(stage1_kir, str):
+        raise _selfhost_error("self_build entry must return kir json")
+    stage2_kir = _execute_frontend_kir_entry_v1(
+        frontend_source,
+        stage1_kir,
+        entry="self_build",
+        args=[frontend_source],
+    )
+    if not isinstance(stage2_kir, str):
+        raise _selfhost_error("self_build entry must return kir json")
+    if try_parse_selfhost_frontend_kir_v1(stage1_kir) is None or try_parse_selfhost_frontend_kir_v1(stage2_kir) is None:
+        raise _selfhost_error("self-build produced invalid kir json")
+    if stage1_kir != stage2_kir:
+        raise _selfhost_error("self-build did not reach a fixed point")
+    return SelfhostBuildResultV1(
+        stage0_kir=canonical_stage0_kir,
+        stage1_kir=stage1_kir,
+        stage2_kir=stage2_kir,
+    )
 
 
 def canonical_selfhost_bundle_dir_v1() -> Path:

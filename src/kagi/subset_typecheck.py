@@ -26,6 +26,8 @@ BUILTIN_SIGNATURES: dict[str, BuiltinSignatureV0] = {
     "after_substring": BuiltinSignatureV0(("string", "string"), "string"),
     "before_substring": BuiltinSignatureV0(("string", "string"), "string"),
     "concat": BuiltinSignatureV0(("string", "string"), "string"),
+    "current_program_kir": BuiltinSignatureV0((), "string"),
+    "current_program_source": BuiltinSignatureV0((), "string"),
     "ends_with": BuiltinSignatureV0(("string", "string"), "bool"),
     "extract_quoted": BuiltinSignatureV0(("string",), "string"),
     "hir_to_kir": BuiltinSignatureV0(("string",), "string"),

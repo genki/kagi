@@ -23,11 +23,12 @@ def _frontend_api():
 
 def _selfhost_api():
     from .selfhost_runtime import (
+        build_selfhost_frontend_v1,
         compile_selfhost_frontend_to_kir_v1,
         execute_selfhost_frontend_entry_v1,
     )
 
-    return compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
+    return build_selfhost_frontend_v1, compile_selfhost_frontend_to_kir_v1, execute_selfhost_frontend_entry_v1
 
 
 def _subset_api():
@@ -114,7 +115,7 @@ def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, st
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
-    _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
+    _, _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
     return execute_selfhost_frontend_entry_v1(frontend_source, entry="parse", args=[program_source])
 
 
@@ -141,7 +142,7 @@ def parse_json_text(raw: str, *, phase: str, expected_kind: str | None = None) -
 
 
 def execute_selfhost_text_entry(frontend_source: str, program_source: str, *, entry: str) -> str:
-    _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
+    _, _, execute_selfhost_frontend_entry_v1 = _selfhost_api()
     value = execute_selfhost_frontend_entry_v1(frontend_source, entry=entry, args=[program_source])
     if not isinstance(value, str):
         raise DiagnosticError(
@@ -301,6 +302,10 @@ def main() -> None:
     selfhost_freeze_parser = subparsers.add_parser("selfhost-freeze")
     selfhost_freeze_parser.add_argument("frontend")
     add_json_flag(selfhost_freeze_parser)
+
+    selfhost_build_parser = subparsers.add_parser("selfhost-build")
+    selfhost_build_parser.add_argument("frontend")
+    add_json_flag(selfhost_build_parser)
 
     args = parser.parse_args()
     if args.command == "run":
@@ -526,13 +531,34 @@ def main() -> None:
 
     if args.command == "selfhost-freeze":
         try:
-            compile_selfhost_frontend_to_kir_v1, _ = _selfhost_api()
+            _, compile_selfhost_frontend_to_kir_v1, _ = _selfhost_api()
             frontend_source = Path(args.frontend).read_text(encoding="utf-8")
             kir_json = compile_selfhost_frontend_to_kir_v1(frontend_source)
             if args.json:
                 emit_payload({"ok": True, "kir": json.loads(kir_json)})
             else:
                 emit_text(kir_json)
+        except Exception as exc:
+            emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
+        return
+
+    if args.command == "selfhost-build":
+        try:
+            build_selfhost_frontend_v1, _, _ = _selfhost_api()
+            frontend_source = Path(args.frontend).read_text(encoding="utf-8")
+            build = build_selfhost_frontend_v1(frontend_source)
+            if args.json:
+                emit_payload(
+                    {
+                        "ok": True,
+                        "fixed_point": build.fixed_point,
+                        "stage0_kir": json.loads(build.stage0_kir),
+                        "stage1_kir": json.loads(build.stage1_kir),
+                        "stage2_kir": json.loads(build.stage2_kir),
+                    }
+                )
+            else:
+                emit_text(build.stage1_kir)
         except Exception as exc:
             emit_diagnostic(exc, phase="subset-runtime", use_json=args.json)
         return

@@ -144,6 +144,32 @@ def eval_expr(functions: dict[str, FunctionDef], expr: Expr, env: dict[str, obje
                     )
                 )
             return args[0] == args[1]
+        if expr.callee == "current_program_source":
+            if args:
+                raise DiagnosticError(
+                    Diagnostic(
+                        phase="subset-runtime",
+                        code="arity_mismatch",
+                        message="current_program_source expects 0 arguments",
+                        line=None,
+                        column=None,
+                        snippet=None,
+                    )
+                )
+            return str(env.get("source", ""))
+        if expr.callee == "current_program_kir":
+            if args:
+                raise DiagnosticError(
+                    Diagnostic(
+                        phase="subset-runtime",
+                        code="arity_mismatch",
+                        message="current_program_kir expects 0 arguments",
+                        line=None,
+                        column=None,
+                        snippet=None,
+                    )
+                )
+            return ""
         if expr.callee in BUILTINS:
             return BUILTINS[expr.callee](*args)
         if expr.callee not in functions:

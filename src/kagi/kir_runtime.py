@@ -35,6 +35,12 @@ class KIRExecutionResultV0:
     output: str
 
 
+@dataclass(frozen=True)
+class KIRExecutionContextV0:
+    current_program_source: str | None = None
+    current_program_kir: str | None = None
+
+
 class _ReturnSignal(Exception):
     def __init__(self, value: Any):
         super().__init__()
@@ -182,6 +188,7 @@ def execute_kir_entry_v0(
     args: list[Any],
     *,
     builtins: dict[str, BuiltinFuncV0] | None = None,
+    context: KIRExecutionContextV0 | None = None,
 ) -> Any:
     functions = {fn.name: fn for fn in program.functions}
     if entry not in functions:
@@ -234,6 +241,26 @@ def execute_kir_entry_v0(
         )
 
     def call_named(name: str, call_args: list[Any]) -> Any:
+        if name == "current_program_source":
+            if call_args:
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("kir-runtime", "current_program_source takes no arguments")
+                )
+            if context is None or context.current_program_source is None:
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("kir-runtime", "current_program_source unavailable")
+                )
+            return context.current_program_source
+        if name == "current_program_kir":
+            if call_args:
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("kir-runtime", "current_program_kir takes no arguments")
+                )
+            if context is None or context.current_program_kir is None:
+                raise DiagnosticError(
+                    diagnostic_from_runtime_error("kir-runtime", "current_program_kir unavailable")
+                )
+            return context.current_program_kir
         if name in runtime_builtins:
             return runtime_builtins[name](*call_args)
         if name not in functions:

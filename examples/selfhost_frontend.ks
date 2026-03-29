@@ -4349,3 +4349,16 @@ fn pipeline(source) {
     return exact;
   }
 }
+
+fn freeze() {
+  return current_program_kir();
+}
+
+fn self_build(source) {
+  let self_source = current_program_source();
+  if eq(source, self_source) {
+    return freeze();
+  } else {
+    return kir(source);
+  }
+}
