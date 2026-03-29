@@ -45,13 +45,9 @@ def execute_subset_entry_via_kir_v0(source: str, *, entry: str, args: list[objec
 
 
 def execute_kir_entry_v0(program, entry, args, *, builtins=None, context: KIRExecutionContextV0 | None = None):
-    from .capir_runtime import execute_kir_entry_fast_v0
-    from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
+    from .capir_runtime import execute_kir_entry_v0 as execute_shared_kir_entry_v0
 
-    fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins, context=context)
-    if fast is not None:
-        return fast
-    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins, context=context)
+    return execute_shared_kir_entry_v0(program, entry=entry, args=args, builtins=builtins, context=context)
 
 
 def _selfhost_error(message: str) -> DiagnosticError:

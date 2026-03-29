@@ -72,6 +72,15 @@ def execute_kir_program_v0(program: KIRProgramV0, *, builtins=None):
     return execute_host_kir_program_v0(program, builtins=builtins)
 
 
+def execute_kir_entry_v0(program: KIRProgramV0, entry: str, args: list[object], *, builtins=None, context=None):
+    fast = execute_kir_entry_fast_v0(program, entry=entry, args=args, builtins=builtins, context=context)
+    if fast is not None:
+        return fast
+    from .kir_runtime import execute_kir_entry_v0 as execute_host_kir_entry_v0
+
+    return execute_host_kir_entry_v0(program, entry=entry, args=args, builtins=builtins, context=context)
+
+
 def _call_local_function_v0(
     functions: dict[str, KIRFunctionV0],
     name: str,

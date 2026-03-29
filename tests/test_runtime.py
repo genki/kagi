@@ -334,6 +334,32 @@ class RuntimeTest(unittest.TestCase):
             actual = selfhost_runtime_module.execute_kir_entry_v0(program, entry="main", args=["hello"], builtins={})
         self.assertEqual(actual, "hello!")
 
+    def test_subset_eval_execute_kir_entry_delegates_to_shared_entry_helper(self):
+        import kagi.subset_eval as subset_eval_module
+
+        program = KIRProgramV0(instructions=[], functions=[])
+        with patch("kagi.capir_runtime.execute_kir_entry_v0", return_value="ok") as shared_spy:
+            actual = subset_eval_module.execute_kir_entry_v0(program, entry="main", args=["x"], builtins={"b": object()})
+        self.assertEqual(actual, "ok")
+        self.assertEqual(shared_spy.call_count, 1)
+
+    def test_lower_subset_execute_kir_entry_delegates_to_shared_entry_helper(self):
+        import kagi.lower_subset_to_kir as lower_subset_to_kir_module
+
+        program = KIRProgramV0(instructions=[], functions=[])
+        with patch("kagi.capir_runtime.execute_kir_entry_v0", return_value="ok") as shared_spy:
+            actual = lower_subset_to_kir_module.execute_kir_entry_v0(program, entry="main", args=["x"], builtins={"b": object()})
+        self.assertEqual(actual, "ok")
+        self.assertEqual(shared_spy.call_count, 1)
+
+    def test_selfhost_execute_kir_entry_delegates_to_shared_entry_helper(self):
+        program = KIRProgramV0(instructions=[], functions=[])
+        context = kir_runtime_module.KIRExecutionContextV0(current_program_source="s", current_program_kir="k")
+        with patch("kagi.capir_runtime.execute_kir_entry_v0", return_value="ok") as shared_spy:
+            actual = selfhost_runtime_module.execute_kir_entry_v0(program, entry="main", args=["x"], builtins={"b": object()}, context=context)
+        self.assertEqual(actual, "ok")
+        self.assertEqual(shared_spy.call_count, 1)
+
     def test_kagi_subset_module_exports_run_subset_program_via_kir(self):
         self.assertTrue(callable(run_subset_program_via_kir))
 
