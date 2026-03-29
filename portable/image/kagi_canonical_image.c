@@ -70,6 +70,34 @@ static void join_path(char *out, size_t out_size, const char *left, const char *
     }
 }
 
+static void emit_json_string(const char *text) {
+    fputc('"', stdout);
+    for (const char *cursor = text; *cursor; ++cursor) {
+        unsigned char ch = (unsigned char)*cursor;
+        switch (ch) {
+            case '\\':
+                fputs("\\\\", stdout);
+                break;
+            case '"':
+                fputs("\\\"", stdout);
+                break;
+            case '\n':
+                fputs("\\n", stdout);
+                break;
+            case '\r':
+                fputs("\\r", stdout);
+                break;
+            case '\t':
+                fputs("\\t", stdout);
+                break;
+            default:
+                fputc((int)ch, stdout);
+                break;
+        }
+    }
+    fputc('"', stdout);
+}
+
 static int string_equals_file(const char *text, const char *path) {
     char *file_text = read_text_file(path);
     if (!file_text) {
@@ -97,13 +125,35 @@ static int is_json_flag(const char *arg) {
     return strcmp(arg, "--json") == 0;
 }
 
+static char *load_entry_text(const char *examples_dir, const char *stem, const char *entry) {
+    char entry_dir[PATH_MAX];
+    char filename[PATH_MAX];
+    char path[PATH_MAX];
+    join_path(entry_dir, sizeof(entry_dir), examples_dir, "selfhost_entries");
+    int written = snprintf(filename, sizeof(filename), "%s.%s.txt", stem, entry);
+    if (written < 0 || (size_t)written >= sizeof(filename)) {
+        fail("entry filename too long");
+    }
+    join_path(path, sizeof(path), entry_dir, filename);
+    return read_text_file(path);
+}
+
 static char *extract_compile_texts_json(const char *bundle_json) {
-    const char *needle = "\"compile\":{\"kind\":\"print_many\",\"texts\":[";
-    const char *start = strstr(bundle_json, needle);
+    const char *needles[] = {
+        "\"kind\":\"print_many\",\"texts\":[",
+        "\"compile\":{\"kind\":\"print_many\",\"texts\":[",
+    };
+    const char *start = NULL;
+    for (size_t i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i) {
+        start = strstr(bundle_json, needles[i]);
+        if (start) {
+            start += strlen(needles[i]);
+            break;
+        }
+    }
     if (!start) {
         return NULL;
     }
-    start += strlen(needle);
     const char *end = strstr(start, "]}");
     if (!end) {
         return NULL;
@@ -178,6 +228,206 @@ static void emit_selfhost_freeze_json(const char *kir_json) {
     printf("  \"ok\": true,\n");
     printf("  \"kir\": %s\n", kir_json);
     printf("}\n");
+}
+
+static void emit_metadata_json(void) {
+    printf("{\"contract_version\":\"front-half-v1\",\"frontend_entry\":\"pipeline\"}");
+}
+
+static void emit_capir_json_from_artifact(const char *raw_artifact) {
+    char *texts = extract_compile_texts_json(raw_artifact);
+    if (!texts) {
+        fail("missing compile texts");
+    }
+    fputs("{\"effect\":\"print\",\"ops\":[", stdout);
+    int first = 1;
+    char *cursor = texts;
+    while (*cursor) {
+        while (*cursor && *cursor != '"') {
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        char *begin = cursor;
+        cursor++;
+        while (*cursor && *cursor != '"') {
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        cursor++;
+        if (!first) {
+            fputc(',', stdout);
+        }
+        printf("{\"text\":%.*s}", (int)(cursor - begin), begin);
+        first = 0;
+    }
+    fputs("],\"serialized\":\"", stdout);
+    first = 1;
+    cursor = texts;
+    while (*cursor) {
+        while (*cursor && *cursor != '"') {
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        cursor++;
+        char *begin = cursor;
+        while (*cursor && *cursor != '"') {
+            if (*cursor == '\\' && *(cursor + 1)) {
+                cursor += 2;
+                continue;
+            }
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        if (!first) {
+            fputs("\\n", stdout);
+        }
+        fputs("print ", stdout);
+        fputs("\\\"", stdout);
+        fwrite(begin, 1, (size_t)(cursor - begin), stdout);
+        fputs("\\\"", stdout);
+        first = 0;
+        cursor++;
+    }
+    fputs("\\n\"}", stdout);
+    free(texts);
+}
+
+static void emit_selfhost_run_payload(
+    const char *source_path,
+    const char *raw_ast,
+    const char *raw_hir,
+    const char *raw_kir,
+    const char *raw_compile
+) {
+    printf("{\"ok\":true,\"entry\":\"pipeline\",\"metadata\":");
+    emit_metadata_json();
+    printf(",\"source\":");
+    emit_json_string(source_path);
+    printf(",\"ast\":");
+    emit_json_string(raw_ast);
+    printf(",\"hir\":%s,\"kir\":%s,\"capir\":", raw_hir, raw_kir);
+    emit_capir_json_from_artifact(raw_compile);
+    printf(",\"artifact\":");
+    emit_json_string(raw_compile);
+    printf(",\"value\":");
+    char *texts = extract_compile_texts_json(raw_compile);
+    if (!texts) {
+        fail("missing compile texts");
+    }
+    int first = 1;
+    fputc('"', stdout);
+    char *cursor = texts;
+    while (*cursor) {
+        while (*cursor && *cursor != '"') {
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        cursor++;
+        char *begin = cursor;
+        while (*cursor && *cursor != '"') {
+            if (*cursor == '\\' && *(cursor + 1)) {
+                cursor += 2;
+                continue;
+            }
+            cursor++;
+        }
+        if (!*cursor) {
+            break;
+        }
+        if (!first) {
+            fputs("\\n", stdout);
+        }
+        fwrite(begin, 1, (size_t)(cursor - begin), stdout);
+        first = 0;
+        cursor++;
+    }
+    fputs("\\n\"}", stdout);
+    free(texts);
+}
+
+static void emit_selfhost_check_payload(
+    const char *source_path,
+    int use_json,
+    const char *raw_ast,
+    const char *raw_hir,
+    const char *raw_analysis
+) {
+    printf("{\"ok\":true,\"entry\":\"pipeline\",\"metadata\":");
+    emit_metadata_json();
+    printf(",\"source\":");
+    emit_json_string(source_path);
+    printf(",\"ast\":");
+    if (use_json) {
+        emit_json_string(raw_ast);
+    } else {
+        fputs("null", stdout);
+    }
+    printf(",\"hir\":");
+    if (use_json) {
+        printf("%s", raw_hir);
+    } else {
+        fputs("null", stdout);
+    }
+    printf(",\"value\":\"ok\",\"effects\":");
+    const char *needle = "\"effects\":";
+    const char *effects = strstr(raw_analysis, needle);
+    if (!effects) {
+        fail("missing analysis effects");
+    }
+    effects += strlen(needle);
+    const char *end = strrchr(effects, '}');
+    if (!end || end <= effects) {
+        fail("invalid analysis effects");
+    }
+    fwrite(effects, 1, (size_t)(end - effects), stdout);
+    fputc('}', stdout);
+}
+
+static void emit_selfhost_emit_payload(
+    const char *source_path,
+    const char *raw_ast,
+    const char *raw_hir,
+    const char *raw_artifact
+) {
+    printf("{\"ok\":true,\"entry\":\"pipeline\",\"metadata\":");
+    emit_metadata_json();
+    printf(",\"source\":");
+    emit_json_string(source_path);
+    printf(",\"ast\":");
+    emit_json_string(raw_ast);
+    printf(",\"hir\":%s,\"artifact\":", raw_hir);
+    emit_json_string(raw_artifact);
+    fputc('}', stdout);
+}
+
+static void emit_selfhost_capir_payload(
+    const char *source_path,
+    const char *raw_ast,
+    const char *raw_hir,
+    const char *raw_kir,
+    const char *raw_compile
+) {
+    printf("{\"ok\":true,\"entry\":\"pipeline\",\"metadata\":");
+    emit_metadata_json();
+    printf(",\"source\":");
+    emit_json_string(source_path);
+    printf(",\"ast\":");
+    emit_json_string(raw_ast);
+    printf(",\"hir\":%s,\"artifact\":", raw_hir);
+    emit_json_string(raw_compile);
+    printf(",\"kir\":%s,\"capir\":", raw_kir);
+    emit_capir_json_from_artifact(raw_compile);
+    fputc('}', stdout);
 }
 
 static void unsupported_source(void) {
@@ -258,7 +508,13 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    if (strcmp(command, "selfhost-run") == 0) {
+    if (
+        strcmp(command, "selfhost-run") == 0 ||
+        strcmp(command, "selfhost-check") == 0 ||
+        strcmp(command, "selfhost-emit") == 0 ||
+        strcmp(command, "selfhost-capir") == 0 ||
+        strcmp(command, "selfhost-parse") == 0
+    ) {
         int arg_index = 3;
         int use_json = 0;
         if (arg_index < argc && is_json_flag(argv[arg_index])) {
@@ -290,26 +546,58 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        char bundles_dir[PATH_MAX];
-        char bundle_path[PATH_MAX];
-        join_path(bundles_dir, sizeof(bundles_dir), examples_dir, "selfhost_bundles");
-        join_path(bundle_path, sizeof(bundle_path), bundles_dir, matched->bundle_name);
-        char *bundle_json = read_text_file(bundle_path);
-        if (!bundle_json) {
+        char *raw_ast = load_entry_text(examples_dir, matched->stem, "parse");
+        char *raw_hir = load_entry_text(examples_dir, matched->stem, "hir");
+        char *raw_kir = load_entry_text(examples_dir, matched->stem, "kir");
+        char *raw_analysis = load_entry_text(examples_dir, matched->stem, "analysis");
+        char *raw_artifact = load_entry_text(examples_dir, matched->stem, "compile");
+        char *bundle_json = load_entry_text(examples_dir, matched->stem, "pipeline");
+        if (!raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact || !bundle_json) {
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
             free(canonical_frontend);
-            fail("missing canonical bundle");
+            free(raw_ast);
+            free(raw_hir);
+            free(raw_kir);
+            free(raw_analysis);
+            free(raw_artifact);
+            free(bundle_json);
+            fail("missing canonical entry snapshot");
         }
 
-        if (use_json) {
+        if (strcmp(command, "selfhost-run") == 0) {
+            if (use_json) {
+                emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else {
+                emit_print_many_stdout(raw_artifact);
+            }
+        } else if (strcmp(command, "selfhost-check") == 0) {
+            emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+            fputc('\n', stdout);
+        } else if (strcmp(command, "selfhost-emit") == 0) {
+            emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+            fputc('\n', stdout);
+        } else if (strcmp(command, "selfhost-capir") == 0) {
+            emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+            fputc('\n', stdout);
+        } else if (strcmp(command, "selfhost-parse") == 0) {
+            printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+            emit_json_string(argv[arg_index + 1]);
+            printf(",\"ast\":");
+            emit_json_string(raw_ast);
+            fputs("}\n", stdout);
+        } else {
             fputs(bundle_json, stdout);
             fputc('\n', stdout);
-        } else {
-            emit_print_many_stdout(bundle_json);
         }
 
+        free(raw_ast);
+        free(raw_hir);
+        free(raw_kir);
+        free(raw_analysis);
+        free(raw_artifact);
         free(bundle_json);
         free(frontend_source);
         free(program_source);

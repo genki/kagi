@@ -80,7 +80,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('selfhost-build', source)
         self.assertIn('selfhost-freeze', source)
         self.assertIn('selfhost-run', source)
-        self.assertIn('selfhost_bundles', source)
+        self.assertIn('selfhost_entries', source)
         self.assertIn('canonical-seed-kir', source)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
@@ -313,6 +313,114 @@ class NativeHostBoundaryTest(unittest.TestCase):
             )
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(run.stdout, "hello, world!\n")
+
+    def test_default_manifest_native_image_supports_selfhost_json_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            env = {**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""}
+            frontend = str(self.root / "examples" / "selfhost_frontend.ks")
+            program = str(self.root / "examples" / "hello_arg_fn.ksrc")
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", frontend, program],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            parse_payload = __import__("json").loads(parse.stdout)
+            self.assertTrue(parse_payload["ok"])
+            self.assertEqual(parse_payload["entry"], "parse")
+
+            check = subprocess.run(
+                [str(launcher_bin), "selfhost-check", "--json", frontend, program],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(check.returncode, 0, check.stderr)
+            check_payload = __import__("json").loads(check.stdout)
+            self.assertTrue(check_payload["ok"])
+            self.assertEqual(check_payload["value"], "ok")
+            self.assertEqual(check_payload["effects"]["program"], ["print"])
+
+            emit = subprocess.run(
+                [str(launcher_bin), "selfhost-emit", frontend, program],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(emit.returncode, 0, emit.stderr)
+            emit_payload = __import__("json").loads(emit.stdout)
+            self.assertTrue(emit_payload["ok"])
+            self.assertIn("print_many", emit_payload["artifact"])
+
+            capir = subprocess.run(
+                [str(launcher_bin), "selfhost-capir", frontend, program],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(capir.returncode, 0, capir.stderr)
+            capir_payload = __import__("json").loads(capir.stdout)
+            self.assertTrue(capir_payload["ok"])
+            self.assertEqual(capir_payload["capir"]["effect"], "print")
+
+            run_json = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", frontend, program],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(run_json.returncode, 0, run_json.stderr)
+            run_payload = __import__("json").loads(run_json.stdout)
+            self.assertTrue(run_payload["ok"])
+            self.assertEqual(run_payload["value"], "hello, world!\n")
 
 
 if __name__ == "__main__":
