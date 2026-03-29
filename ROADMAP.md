@@ -98,9 +98,11 @@
 - Stage 7: CLI host contraction は完了
   - `cli.py` は parser/launcher だけにした
   - command 意味論と file read/payload 組み立ては `cli_host.py` に移した
+- Stage 8: strict primary path / oracle isolation は完了
+  - canonical compile/build/CLI run path が oracle / compatibility shim fallback を使わないことを strict test で固定した
 - 現在の主 blocker:
-  - noncanonical / fallback path の `subset_parser.py`
-  - strict primary path と oracle の完全分離
+  - CPython host 自体の置換
+  - noncanonical / compatibility path の将来的な縮退
 
 ## 当面のマイルストーン
 
@@ -203,3 +205,7 @@
    - 完了
    - `cli.py` は parser/launcher のみ
    - command 意味論は `cli_host.py` に委譲する
+8. Stage 8: strict primary path / oracle isolation
+   - 完了
+   - canonical compile/build/CLI run path は oracle / compatibility shim fallback を通常主経路で使わない
+   - Python 実装は bootstrap seed / compatibility shim / differential oracle として扱う

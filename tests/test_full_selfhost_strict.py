@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import io
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import kagi.cli as cli_module
 import kagi.selfhost_runtime as selfhost_runtime_module
 from kagi.compile_result import compile_source_v1
 from kagi.diagnostics import DiagnosticError
@@ -87,6 +90,30 @@ class FullSelfhostStrictTest(unittest.TestCase):
             compiled = compile_source_v1(self.frontend_source, self.hello_arg_fn)
         self.assertEqual(compiled.stdout, "hello, world!")
         self.assertGreaterEqual(bundle_spy.call_count, 1)
+
+    def test_stage8_canonical_compile_path_isolated_from_oracle_and_compat_shims(self):
+        with patch("kagi.selfhost_runtime.execute_subset_entry_via_kir_v0", side_effect=AssertionError("oracle fallback should not be used")):
+            with patch("kagi.selfhost_runtime.parse_subset_program", side_effect=AssertionError("subset parser should not be used")):
+                with patch("kagi.selfhost_runtime.lower_subset_program_to_kir_v0", side_effect=AssertionError("subset lowering should not be used")):
+                    with patch("kagi.selfhost_runtime.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("compat bundle decoder should not be used")):
+                        with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("host kir runtime should not be used")):
+                            compiled = compile_source_v1(self.frontend_source, self.hello_arg_fn)
+        self.assertEqual(compiled.stdout, "hello, world!")
+
+    def test_stage8_canonical_cli_run_isolated_from_oracle_and_compat_shims(self):
+        stdout = io.StringIO()
+        with patch("kagi.selfhost_runtime.execute_subset_entry_via_kir_v0", side_effect=AssertionError("oracle fallback should not be used")):
+            with patch("kagi.selfhost_runtime.parse_selfhost_pipeline_bundle_v1", side_effect=AssertionError("compat bundle decoder should not be used")):
+                with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("host kir runtime should not be used")):
+                    with redirect_stdout(stdout):
+                        cli_module.main(
+                            [
+                                "selfhost-run",
+                                str(self.root / "examples" / "selfhost_frontend.ks"),
+                                str(self.root / "examples" / "hello_arg_fn.ksrc"),
+                            ]
+                        )
+        self.assertEqual(stdout.getvalue(), "hello, world!\n")
 
     def test_compile_source_v1_still_works_after_self_build(self):
         build = build_selfhost_frontend_v1(self.frontend_source)
