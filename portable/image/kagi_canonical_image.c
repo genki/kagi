@@ -9,7 +9,6 @@
 typedef struct {
     const char *stem;
     const char *source_name;
-    const char *bundle_name;
 } canonical_case_t;
 
 typedef enum {
@@ -111,17 +110,17 @@ typedef struct {
 } native_function_program_t;
 
 static const canonical_case_t CANONICAL_CASES[] = {
-    {"hello", "hello.ksrc", "hello.pipeline.json"},
-    {"hello_arg_fn", "hello_arg_fn.ksrc", "hello_arg_fn.pipeline.json"},
-    {"hello_concat", "hello_concat.ksrc", "hello_concat.pipeline.json"},
-    {"hello_fn", "hello_fn.ksrc", "hello_fn.pipeline.json"},
-    {"hello_if", "hello_if.ksrc", "hello_if.pipeline.json"},
-    {"hello_if_stmt", "hello_if_stmt.ksrc", "hello_if_stmt.pipeline.json"},
-    {"hello_let", "hello_let.ksrc", "hello_let.pipeline.json"},
-    {"hello_let_concat", "hello_let_concat.ksrc", "hello_let_concat.pipeline.json"},
-    {"hello_let_string", "hello_let_string.ksrc", "hello_let_string.pipeline.json"},
-    {"hello_print_concat", "hello_print_concat.ksrc", "hello_print_concat.pipeline.json"},
-    {"hello_twice", "hello_twice.ksrc", "hello_twice.pipeline.json"},
+    {"hello", "hello.ksrc"},
+    {"hello_arg_fn", "hello_arg_fn.ksrc"},
+    {"hello_concat", "hello_concat.ksrc"},
+    {"hello_fn", "hello_fn.ksrc"},
+    {"hello_if", "hello_if.ksrc"},
+    {"hello_if_stmt", "hello_if_stmt.ksrc"},
+    {"hello_let", "hello_let.ksrc"},
+    {"hello_let_concat", "hello_let_concat.ksrc"},
+    {"hello_let_string", "hello_let_string.ksrc"},
+    {"hello_print_concat", "hello_print_concat.ksrc"},
+    {"hello_twice", "hello_twice.ksrc"},
 };
 
 static void fail(const char *message) {
@@ -2342,8 +2341,7 @@ int main(int argc, char **argv) {
         char *raw_kir = load_entry_text(examples_dir, matched->stem, "kir");
         char *raw_analysis = load_entry_text(examples_dir, matched->stem, "analysis");
         char *raw_artifact = load_entry_text(examples_dir, matched->stem, "compile");
-        char *bundle_json = load_entry_text(examples_dir, matched->stem, "pipeline");
-        if (!canonical_program_source || !raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact || !bundle_json) {
+        if (!canonical_program_source || !raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact) {
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
@@ -2354,7 +2352,6 @@ int main(int argc, char **argv) {
             free(raw_kir);
             free(raw_analysis);
             free(raw_artifact);
-            free(bundle_json);
             fail("missing canonical entry snapshot");
         }
 
@@ -2394,9 +2391,6 @@ int main(int argc, char **argv) {
             printf(",\"ast\":");
             emit_json_string(raw_ast);
             fputs("}\n", stdout);
-        } else {
-            fputs(bundle_json, stdout);
-            fputc('\n', stdout);
         }
 
         free(raw_ast);
@@ -2404,7 +2398,6 @@ int main(int argc, char **argv) {
         free(raw_kir);
         free(raw_analysis);
         free(raw_artifact);
-        free(bundle_json);
         free_native_function_program(&native_function_program);
         free_native_stmt_program(&native_stmt_program);
         free(frontend_source);

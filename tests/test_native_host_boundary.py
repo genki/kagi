@@ -1890,6 +1890,44 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(run.stdout)
             self.assertEqual(payload["value"], "alpha\nbeta\n")
 
+    def test_exact_canonical_if_stmt_source_does_not_need_selfhost_entries_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            source_path = tmp_path / "hello_if_stmt_copy.ksrc"
+            source_path.write_text((self.root / "examples" / "hello_if_stmt.ksrc").read_text(encoding="utf-8"), encoding="utf-8")
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            parse_payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(parse_payload["ast"])
+            self.assertEqual(ast["statements"][2]["kind"], "if_stmt")
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            run_payload = __import__("json").loads(run.stdout)
+            self.assertEqual(run_payload["value"], "hello, world!\n")
+
     def test_generic_function_native_path_does_not_need_selfhost_entries_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1965,6 +2003,15 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(ast["statements"][0]["name"], "message")
             self.assertEqual(ast["statements"][2]["expr"]["kind"], "concat")
             self.assertNotEqual(payload["ast"], '"poison"')
+
+            check = subprocess.run(
+                [str(launcher_bin), "selfhost-check", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(check.returncode, 0, check.stderr)
+            check_payload = __import__("json").loads(check.stdout)
+            self.assertEqual(check_payload["effects"]["program"], ["print"])
+            self.assertEqual(check_payload["value"], "ok")
 
     def test_generic_function_payloads_ignore_poisoned_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
