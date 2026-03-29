@@ -61,6 +61,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         source = self.native_runtime_source.read_text(encoding="utf-8")
         self.assertIn('missing KAGI_IMAGE', source)
         self.assertIn('missing KAGI_HOME', source)
+        self.assertIn('failed to exec native image', source)
         self.assertIn('failed to exec native bridge python', source)
         self.assertIn('bin/python3', source)
         self.assertIn('"-m"', source)
@@ -126,6 +127,55 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(completed.stdout)
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
+
+    def test_native_runtime_bridge_can_exec_direct_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            direct_image = dist / "app" / "direct-image"
+            direct_image.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "printf 'entry=%s\\n' \"$1\"\n"
+                "printf 'home=%s\\n' \"$KAGI_HOME\"\n"
+                "shift\n"
+                "printf 'args=%s\\n' \"$*\"\n",
+                encoding="utf-8",
+            )
+            direct_image.chmod(0o755)
+
+            completed = subprocess.run(
+                [str(native_runtime_bin), "selfhost.bootstrap", "--json", "hello.ks"],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "KAGI_IMAGE": str(direct_image),
+                    "KAGI_HOME": str(dist / "workspace"),
+                    "PYTHONHOME": "",
+                    "PYTHONPATH": "",
+                },
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("entry=selfhost.bootstrap", completed.stdout)
+            self.assertIn(f"home={dist / 'workspace'}", completed.stdout)
+            self.assertIn("args=--json hello.ks", completed.stdout)
 
 
 if __name__ == "__main__":

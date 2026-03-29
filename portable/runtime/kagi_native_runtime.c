@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,27 @@ int main(int argc, char **argv) {
     }
     if (!kagi_home || kagi_home[0] == '\0') {
         fprintf(stderr, "missing KAGI_HOME\n");
+        return 1;
+    }
+
+    struct stat image_stat;
+    if (stat(image_path, &image_stat) == 0 && S_ISREG(image_stat.st_mode) && access(image_path, X_OK) == 0) {
+        char **child_argv = calloc((size_t)argc + 2, sizeof(char *));
+        if (!child_argv) {
+            perror("calloc");
+            return 1;
+        }
+
+        int i = 0;
+        child_argv[i++] = (char *)image_path;
+        child_argv[i++] = argv[1];
+        for (int j = 2; j < argc; ++j) {
+            child_argv[i++] = argv[j];
+        }
+        child_argv[i] = NULL;
+
+        execve(image_path, child_argv, environ);
+        fprintf(stderr, "failed to exec native image: %s\n", strerror(errno));
         return 1;
     }
 
