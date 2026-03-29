@@ -157,6 +157,7 @@ class BundleKirFutureTest(unittest.TestCase):
         source = root / "examples" / "hello_arg_fn.ksrc"
 
         import kagi.cli as cli_module
+        import kagi.cli_host as cli_host_module
 
         argv = [
             "kagi",
@@ -165,7 +166,7 @@ class BundleKirFutureTest(unittest.TestCase):
             str(frontend),
             str(source),
         ]
-        with patch.object(cli_module, "_selfhost_api") as api_spy:
+        with patch.object(cli_host_module, "_selfhost_api") as api_spy:
             from kagi.selfhost_runtime import (
                 build_selfhost_frontend_v1,
                 compile_selfhost_frontend_to_kir_v1,

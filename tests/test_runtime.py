@@ -499,6 +499,15 @@ class RuntimeTest(unittest.TestCase):
             },
         )
 
+    def test_stage7_cli_is_thin_launcher(self):
+        parser = cli_module.build_parser()
+        args = parser.parse_args(["selfhost-build", "--json", "frontend.ks"])
+        with patch.object(cli_module, "run_cli_command") as run_spy:
+            cli_module.main(["selfhost-build", "--json", "frontend.ks"])
+        self.assertFalse(hasattr(cli_module, "Path"))
+        self.assertEqual(run_spy.call_count, 1)
+        self.assertEqual(run_spy.call_args.args[0].command, args.command)
+
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(
             instructions=[

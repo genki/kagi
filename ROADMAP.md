@@ -95,9 +95,11 @@
 - Stage 6: filesystem / packaging isolation は完了
   - `selfhost_runtime.py` から `os`, `pathlib`, `KAGI_HOME`, direct path 読み込みを外した
   - canonical asset 解決は `selfhost_assets.py` に集約した
+- Stage 7: CLI host contraction は完了
+  - `cli.py` は parser/launcher だけにした
+  - command 意味論と file read/payload 組み立ては `cli_host.py` に移した
 - 現在の主 blocker:
   - noncanonical / fallback path の `subset_parser.py`
-  - Python CLI host の縮退
   - strict primary path と oracle の完全分離
 
 ## 当面のマイルストーン
@@ -197,7 +199,7 @@
    - 完了
    - `selfhost_runtime.py` は `os`, `pathlib`, `KAGI_HOME` を直接扱わない
    - canonical source / KIR / bundle / snapshot 解決は `selfhost_assets.py` に集約した
-7. Stage 7: front-half utility replacement
+7. Stage 7: CLI host contraction
    - 完了
-   - `subset_builtins.CORE_BUILTINS` は空
-   - string helper builtin は interpreter / KIR path の intrinsic として実行する
+   - `cli.py` は parser/launcher のみ
+   - command 意味論は `cli_host.py` に委譲する
