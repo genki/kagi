@@ -14,6 +14,14 @@ class KagiHostCommandV1:
     args: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class KagiHostResponseV1:
+    exit_code: int
+    stdout: str
+    stderr: str
+    payload: dict | None = None
+
+
 def host_command_from_argparse(args) -> KagiHostCommandV1:
     return KagiHostCommandV1(
         command=args.command,

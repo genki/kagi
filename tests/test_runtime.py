@@ -538,6 +538,33 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(payloads[0]["ok"])
         self.assertEqual(payloads[0]["seed_kind"], "canonical-seed-kir")
 
+    def test_execute_host_command_v1_returns_native_facing_response(self):
+        root = Path(__file__).resolve().parents[1]
+        response = cli_host_module.execute_host_command_v1(
+            KagiHostCommandV1(
+                command="selfhost-bootstrap",
+                use_json=True,
+                frontend=str(root / "examples" / "selfhost_frontend.ks"),
+            )
+        )
+        self.assertEqual(response.exit_code, 0)
+        self.assertIsInstance(response.payload, dict)
+        self.assertTrue(response.payload["ok"])
+        self.assertIn('"seed_kind": "canonical-seed-kir"', response.stdout)
+        self.assertEqual(response.stderr, "")
+
+    def test_execute_host_command_v1_captures_diagnostic_exit_code_and_stderr(self):
+        response = cli_host_module.execute_host_command_v1(
+            KagiHostCommandV1(
+                command="selfhost-bootstrap",
+                frontend="missing.ks",
+            ),
+            read_text=lambda _: (_ for _ in ()).throw(FileNotFoundError("missing.ks")),
+        )
+        self.assertEqual(response.exit_code, 1)
+        self.assertIsNone(response.payload)
+        self.assertIn("missing.ks", response.stderr)
+
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(
             instructions=[

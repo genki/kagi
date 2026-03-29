@@ -91,9 +91,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_cli_command(args, *, emit_payload, emit_text) -> None:
-    from .cli_host import run_cli_command as run_cli_command_impl
+    from .cli_host import execute_host_command_v1
+    from .host_abi import host_command_from_argparse
 
-    return run_cli_command_impl(args, emit_payload=emit_payload, emit_text=emit_text)
+    response = execute_host_command_v1(host_command_from_argparse(args))
+    if response.payload is not None:
+        emit_payload(response.payload)
+    elif response.stdout:
+        emit_text(response.stdout.rstrip("\n"))
+    if response.stderr:
+        print(response.stderr, file=__import__("sys").stderr, end="")
+    if response.exit_code != 0:
+        raise SystemExit(response.exit_code)
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
-from .host_abi import KagiHostCommandV1, host_command_from_argparse
+from .host_abi import KagiHostCommandV1, KagiHostResponseV1, host_command_from_argparse
 from .ir import action_to_string
 
 
@@ -539,4 +539,53 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
         host_command_from_argparse(args),
         emit_payload=emit_payload,
         emit_text=emit_text,
+    )
+
+
+def execute_host_command_v1(
+    command: KagiHostCommandV1,
+    *,
+    read_text: Callable[[str], str] = read_text_file,
+) -> KagiHostResponseV1:
+    payloads: list[dict] = []
+    texts: list[str] = []
+    errors: list[str] = []
+    exit_code = 0
+
+    def emit_payload(payload: dict) -> None:
+        payloads.append(payload)
+        texts.append(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+    def emit_text(text: str) -> None:
+        texts.append(text if text.endswith("\n") else text + "\n")
+
+    original_stderr = sys.stderr
+
+    class _StderrCapture:
+        def write(self, data: str) -> int:
+            errors.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+    try:
+        sys.stderr = _StderrCapture()
+        run_host_command_v1(
+            command,
+            emit_payload=emit_payload,
+            emit_text=emit_text,
+            read_text=read_text,
+        )
+    except SystemExit as exc:
+        code = exc.code
+        exit_code = code if isinstance(code, int) else 1
+    finally:
+        sys.stderr = original_stderr
+
+    return KagiHostResponseV1(
+        exit_code=exit_code,
+        stdout="".join(texts),
+        stderr="".join(errors),
+        payload=payloads[-1] if payloads else None,
     )
