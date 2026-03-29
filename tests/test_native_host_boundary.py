@@ -1743,7 +1743,6 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(ast["statements"][1]["kind"], "print")
             self.assertEqual(ast["statements"][2]["kind"], "print")
 
-    @unittest.expectedFailure
     def test_future_generic_function_parser_handles_mixed_functions_and_top_level_statements(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1780,7 +1779,6 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(payload["value"], "alpha\nbeta\n")
             self.assertEqual(payload["artifact"], '{"kind":"print_many","texts":["alpha","beta"]}')
 
-    @unittest.expectedFailure
     def test_future_generic_function_parser_preserves_renamed_single_arg_function_everywhere(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1813,12 +1811,11 @@ class NativeHostBoundaryTest(unittest.TestCase):
             )
             self.assertEqual(capir.returncode, 0, capir.stderr)
             payload = __import__("json").loads(capir.stdout)
-            kir = __import__("json").loads(payload["kir"])
+            kir = payload["kir"]
             self.assertEqual(kir["functions"][0]["name"], "shout")
             self.assertEqual(kir["functions"][0]["params"], ["text"])
             self.assertEqual(kir["instructions"][0]["name"], "shout")
 
-    @unittest.expectedFailure
     def test_future_generic_function_parser_handles_false_branch_inside_function(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

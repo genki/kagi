@@ -18,6 +18,7 @@ typedef enum {
     NATIVE_EXPR_VAR,
     NATIVE_EXPR_CONCAT_VAR_STRING,
     NATIVE_EXPR_EQ_VAR_STRING,
+    NATIVE_EXPR_EQ_STRING_STRING,
     NATIVE_EXPR_IF_VAR_VAR_STRING,
 } native_expr_kind_t;
 
@@ -95,6 +96,19 @@ typedef struct {
     native_stmt_t *statements;
     size_t count;
 } native_stmt_program_t;
+
+typedef struct {
+    char *name;
+    char *param_name;
+    native_stmt_program_t body;
+} native_function_t;
+
+typedef struct {
+    native_function_t function;
+    char *call_name;
+    char *call_arg;
+    native_stmt_program_t top_level;
+} native_function_program_t;
 
 static const canonical_case_t CANONICAL_CASES[] = {
     {"hello", "hello.ksrc", "hello.pipeline.json"},
@@ -733,19 +747,22 @@ static int parse_eq_var_string_expr(const char *text, native_expr_t *out) {
     char *left = trim_copy(inside);
     char *right = trim_copy(comma + 1);
     char *left_ident = NULL;
+    char *left_string = NULL;
     char *right_string = NULL;
-    int ok = parse_ident_expr(left, &left_ident) && parse_string_literal_expr(right, &right_string);
+    int ok = parse_string_literal_expr(right, &right_string) &&
+             (parse_ident_expr(left, &left_ident) || parse_string_literal_expr(left, &left_string));
     free(left);
     free(right);
     free(inside);
     free(trimmed);
     if (!ok) {
         free(left_ident);
+        free(left_string);
         free(right_string);
         return 0;
     }
-    out->kind = NATIVE_EXPR_EQ_VAR_STRING;
-    out->left = left_ident;
+    out->kind = left_ident ? NATIVE_EXPR_EQ_VAR_STRING : NATIVE_EXPR_EQ_STRING_STRING;
+    out->left = left_ident ? left_ident : left_string;
     out->right = right_string;
     return 1;
 }
@@ -922,6 +939,27 @@ static void free_native_stmt_program(native_stmt_program_t *program) {
         free_native_stmt(&program->statements[i]);
     }
     free(program->statements);
+    memset(program, 0, sizeof(*program));
+}
+
+static void free_native_function(native_function_t *function) {
+    if (!function) {
+        return;
+    }
+    free(function->name);
+    free(function->param_name);
+    free_native_stmt_program(&function->body);
+    memset(function, 0, sizeof(*function));
+}
+
+static void free_native_function_program(native_function_program_t *program) {
+    if (!program) {
+        return;
+    }
+    free_native_function(&program->function);
+    free(program->call_name);
+    free(program->call_arg);
+    free_native_stmt_program(&program->top_level);
     memset(program, 0, sizeof(*program));
 }
 
@@ -1435,6 +1473,14 @@ static void append_expr_json(char **buffer, size_t *length, size_t *capacity, co
     }
     if (expr->kind == NATIVE_EXPR_EQ_VAR_STRING) {
         append_text(buffer, length, capacity, "{\"kind\":\"eq\",\"left\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->left);
+        append_text(buffer, length, capacity, "},\"right\":{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->right);
+        append_text(buffer, length, capacity, "}}");
+        return;
+    }
+    if (expr->kind == NATIVE_EXPR_EQ_STRING_STRING) {
+        append_text(buffer, length, capacity, "{\"kind\":\"eq\",\"left\":{\"kind\":\"string\",\"value\":");
         append_json_string_to_buffer(buffer, length, capacity, expr->left);
         append_text(buffer, length, capacity, "},\"right\":{\"kind\":\"string\",\"value\":");
         append_json_string_to_buffer(buffer, length, capacity, expr->right);
@@ -2130,6 +2176,235 @@ static int try_parse_native_stmt_program(const char *source, native_stmt_program
     return out->count > 0;
 }
 
+static char *join_lines_slice(char **lines, size_t start, size_t end) {
+    size_t total = 1;
+    for (size_t i = start; i < end; ++i) {
+        total += strlen(lines[i]) + 1;
+    }
+    char *buffer = calloc(total, 1);
+    if (!buffer) {
+        fail("out of memory");
+    }
+    size_t offset = 0;
+    for (size_t i = start; i < end; ++i) {
+        size_t len = strlen(lines[i]);
+        memcpy(buffer + offset, lines[i], len);
+        offset += len;
+        if (i + 1 < end) {
+            buffer[offset++] = '\n';
+        }
+    }
+    buffer[offset] = '\0';
+    return buffer;
+}
+
+static int parse_call_line(
+    const char *line,
+    char **out_name,
+    char **out_arg,
+    size_t *out_arg_count
+) {
+    const char *call_prefix = "call ";
+    if (strncmp(line, call_prefix, strlen(call_prefix)) != 0) {
+        return 0;
+    }
+    const char *call_text = line + strlen(call_prefix);
+    const char *open = strchr(call_text, '(');
+    size_t len = strlen(call_text);
+    if (!open || len == 0 || call_text[len - 1] != ')') {
+        return 0;
+    }
+    size_t name_len = (size_t)(open - call_text);
+    char *name = calloc(name_len + 1, 1);
+    if (!name) {
+        fail("out of memory");
+    }
+    memcpy(name, call_text, name_len);
+    name[name_len] = '\0';
+    char *ident = NULL;
+    if (!parse_ident_expr(name, &ident)) {
+        free(name);
+        return 0;
+    }
+    free(name);
+    size_t arg_len = len - (size_t)(open - call_text) - 2;
+    char *arg_text = calloc(arg_len + 1, 1);
+    if (!arg_text) {
+        fail("out of memory");
+    }
+    memcpy(arg_text, open + 1, arg_len);
+    arg_text[arg_len] = '\0';
+    char *trimmed_arg = trim_copy(arg_text);
+    free(arg_text);
+    *out_name = ident;
+    *out_arg = NULL;
+    *out_arg_count = 0;
+    if (trimmed_arg[0] == '\0') {
+        free(trimmed_arg);
+        return 1;
+    }
+    char *string_arg = NULL;
+    if (!parse_string_literal_expr(trimmed_arg, &string_arg)) {
+        free(trimmed_arg);
+        free(*out_name);
+        *out_name = NULL;
+        return 0;
+    }
+    free(trimmed_arg);
+    *out_arg = string_arg;
+    *out_arg_count = 1;
+    return 1;
+}
+
+static int try_parse_native_function_program(const char *source, native_function_program_t *out) {
+    memset(out, 0, sizeof(*out));
+    char *copy = strdup(source);
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *lines[96] = {0};
+    size_t count = 0;
+    for (char *line = strtok(copy, "\n"); line && count < 96; line = strtok(NULL, "\n")) {
+        char *trimmed = trim_copy(line);
+        if (trimmed[0] != '\0') {
+            lines[count++] = trimmed;
+        } else {
+            free(trimmed);
+        }
+    }
+    if (count < 3 || strncmp(lines[0], "fn ", 3) != 0) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t header_len = strlen(lines[0]);
+    if (header_len < 6 || strcmp(lines[0] + header_len - 3, ") {") != 0) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    char *open_paren = strchr(lines[0] + 3, '(');
+    if (!open_paren) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t fn_name_len = (size_t)(open_paren - (lines[0] + 3));
+    char *fn_name_raw = calloc(fn_name_len + 1, 1);
+    if (!fn_name_raw) {
+        fail("out of memory");
+    }
+    memcpy(fn_name_raw, lines[0] + 3, fn_name_len);
+    fn_name_raw[fn_name_len] = '\0';
+    char *fn_name = NULL;
+    if (!parse_ident_expr(fn_name_raw, &fn_name)) {
+        free(fn_name_raw);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    free(fn_name_raw);
+    char *param_end = strstr(open_paren, ") {");
+    size_t param_len = (size_t)(param_end - open_paren - 1);
+    char *param_name = NULL;
+    if (param_len > 0) {
+        char *param_raw = calloc(param_len + 1, 1);
+        if (!param_raw) {
+            fail("out of memory");
+        }
+        memcpy(param_raw, open_paren + 1, param_len);
+        param_raw[param_len] = '\0';
+        if (!parse_ident_expr(param_raw, &param_name)) {
+            free(param_raw);
+            free(fn_name);
+            for (size_t i = 0; i < count; ++i) free(lines[i]);
+            free(copy);
+            return 0;
+        }
+        free(param_raw);
+    }
+
+    size_t close_index = 0;
+    int found_close = 0;
+    int depth = 1;
+    for (size_t i = 1; i < count; ++i) {
+        if (strcmp(lines[i], "} else {") == 0) {
+            continue;
+        }
+        if (strcmp(lines[i], "}") == 0) {
+            depth--;
+            if (depth == 0) {
+                close_index = i;
+                found_close = 1;
+                break;
+            }
+            continue;
+        }
+        size_t line_len = strlen(lines[i]);
+        if (line_len >= 2 && strcmp(lines[i] + line_len - 2, " {") == 0 && strncmp(lines[i], "if ", 3) == 0) {
+            depth++;
+        }
+    }
+    if (!found_close || close_index <= 1 || close_index + 1 >= count) {
+        free(fn_name);
+        free(param_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+
+    char *body_source = join_lines_slice(lines, 1, close_index);
+    if (!try_parse_native_stmt_program(body_source, &out->function.body)) {
+        free(body_source);
+        free(fn_name);
+        free(param_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    free(body_source);
+
+    char *call_name = NULL;
+    char *call_arg = NULL;
+    size_t call_arg_count = 0;
+    if (!parse_call_line(lines[close_index + 1], &call_name, &call_arg, &call_arg_count) ||
+        strcmp(call_name, fn_name) != 0 ||
+        ((param_name == NULL) != (call_arg_count == 0))) {
+        free(call_name);
+        free(call_arg);
+        free_native_stmt_program(&out->function.body);
+        free(fn_name);
+        free(param_name);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+
+    if (close_index + 2 < count) {
+        char *top_level_source = join_lines_slice(lines, close_index + 2, count);
+        if (!try_parse_native_stmt_program(top_level_source, &out->top_level)) {
+            free(top_level_source);
+            free(call_name);
+            free(call_arg);
+            free_native_stmt_program(&out->function.body);
+            free(fn_name);
+            free(param_name);
+            for (size_t i = 0; i < count; ++i) free(lines[i]);
+            free(copy);
+            return 0;
+        }
+        free(top_level_source);
+    }
+
+    out->function.name = fn_name;
+    out->function.param_name = param_name;
+    out->call_name = call_name;
+    out->call_arg = call_arg;
+    for (size_t i = 0; i < count; ++i) free(lines[i]);
+    free(copy);
+    return 1;
+}
+
 static char *native_if_expr_program_to_parse_json(const native_if_expr_program_t *program) {
     char *buffer = NULL;
     size_t length = 0;
@@ -2408,126 +2683,100 @@ static char *eval_native_expr_to_string(const native_expr_t *expr, native_env_va
 }
 
 static int eval_native_expr_to_bool(const native_expr_t *expr, native_env_value_t *values, size_t count, int *out) {
-    if (expr->kind != NATIVE_EXPR_EQ_VAR_STRING) {
-        return 0;
+    if (expr->kind == NATIVE_EXPR_EQ_VAR_STRING) {
+        native_env_value_t *left = find_env_value(values, count, expr->left);
+        if (!left || left->kind != ENV_STRING) {
+            return 0;
+        }
+        *out = strcmp(left->text, expr->right) == 0;
+        return 1;
     }
-    native_env_value_t *left = find_env_value(values, count, expr->left);
-    if (!left || left->kind != ENV_STRING) {
-        return 0;
+    if (expr->kind == NATIVE_EXPR_EQ_STRING_STRING) {
+        *out = strcmp(expr->left, expr->right) == 0;
+        return 1;
     }
-    *out = strcmp(left->text, expr->right) == 0;
-    return 1;
+    return 0;
 }
 
-static char *native_stmt_program_to_parse_json(const native_stmt_program_t *program) {
-    char *buffer = NULL;
-    size_t length = 0;
-    size_t capacity = 0;
-    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[],\"statements\":[");
+static void append_native_stmt_json(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const native_stmt_t *stmt,
+    int kir_mode
+) {
+    if (stmt->kind == NATIVE_STMT_LET) {
+        append_text(buffer, length, capacity, kir_mode ? "{\"op\":\"let\",\"name\":" : "{\"kind\":\"let\",\"name\":");
+        append_json_string_to_buffer(buffer, length, capacity, stmt->name);
+        append_text(buffer, length, capacity, ",\"expr\":");
+        append_expr_json(buffer, length, capacity, &stmt->expr);
+        append_char(buffer, length, capacity, '}');
+        return;
+    }
+    if (stmt->kind == NATIVE_STMT_PRINT) {
+        append_text(buffer, length, capacity, kir_mode ? "{\"op\":\"print\",\"expr\":" : "{\"kind\":\"print\",\"expr\":");
+        append_expr_json(buffer, length, capacity, &stmt->expr);
+        append_char(buffer, length, capacity, '}');
+        return;
+    }
+    append_text(buffer, length, capacity, kir_mode ? "{\"op\":\"if\",\"condition\":{\"kind\":\"var\",\"name\":" : "{\"kind\":\"if_stmt\",\"condition\":{\"kind\":\"var\",\"name\":");
+    append_json_string_to_buffer(buffer, length, capacity, stmt->condition_name);
+    append_text(buffer, length, capacity, kir_mode ? "},\"then\":[{\"op\":\"print\",\"expr\":" : "},\"then_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(buffer, length, capacity, &stmt->then_expr);
+    append_text(buffer, length, capacity, kir_mode ? "}],\"else\":[{\"op\":\"print\",\"expr\":" : "}],\"else_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(buffer, length, capacity, &stmt->else_expr);
+    append_text(buffer, length, capacity, "}]}");
+}
+
+static void append_native_stmt_program_json(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const native_stmt_program_t *program,
+    int kir_mode
+) {
     for (size_t i = 0; i < program->count; ++i) {
-        const native_stmt_t *stmt = &program->statements[i];
         if (i > 0) {
-            append_char(&buffer, &length, &capacity, ',');
+            append_char(buffer, length, capacity, ',');
         }
-        if (stmt->kind == NATIVE_STMT_LET) {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"let\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->name);
-            append_text(&buffer, &length, &capacity, ",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else if (stmt->kind == NATIVE_STMT_PRINT) {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"if_stmt\",\"condition\":{\"kind\":\"var\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->condition_name);
-            append_text(&buffer, &length, &capacity, "},\"then_body\":[{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->then_expr);
-            append_text(&buffer, &length, &capacity, "}],\"else_body\":[{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->else_expr);
-            append_text(&buffer, &length, &capacity, "}]}");
+        append_native_stmt_json(buffer, length, capacity, &program->statements[i], kir_mode);
+    }
+}
+
+static native_env_value_t *clone_env_values(const native_env_value_t *values, size_t count) {
+    if (count == 0) {
+        return NULL;
+    }
+    native_env_value_t *copy = calloc(count, sizeof(native_env_value_t));
+    if (!copy) {
+        fail("out of memory");
+    }
+    for (size_t i = 0; i < count; ++i) {
+        copy[i].name = strdup(values[i].name);
+        if (!copy[i].name) {
+            fail("out of memory");
+        }
+        copy[i].kind = values[i].kind;
+        copy[i].boolean = values[i].boolean;
+        if (values[i].text) {
+            copy[i].text = strdup(values[i].text);
+            if (!copy[i].text) {
+                fail("out of memory");
+            }
         }
     }
-    append_text(&buffer, &length, &capacity, "]}");
-    return buffer;
+    return copy;
 }
 
-static char *native_stmt_program_to_hir_json(const native_stmt_program_t *program) {
-    char *buffer = NULL;
-    size_t length = 0;
-    size_t capacity = 0;
-    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[],\"statements\":[");
-    for (size_t i = 0; i < program->count; ++i) {
-        const native_stmt_t *stmt = &program->statements[i];
-        if (i > 0) {
-            append_char(&buffer, &length, &capacity, ',');
-        }
-        if (stmt->kind == NATIVE_STMT_LET) {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"let\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->name);
-            append_text(&buffer, &length, &capacity, ",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else if (stmt->kind == NATIVE_STMT_PRINT) {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else {
-            append_text(&buffer, &length, &capacity, "{\"kind\":\"if_stmt\",\"condition\":{\"kind\":\"var\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->condition_name);
-            append_text(&buffer, &length, &capacity, "},\"then_body\":[{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->then_expr);
-            append_text(&buffer, &length, &capacity, "}],\"else_body\":[{\"kind\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->else_expr);
-            append_text(&buffer, &length, &capacity, "}]}");
-        }
-    }
-    append_text(&buffer, &length, &capacity, "]}");
-    return buffer;
-}
-
-static char *native_stmt_program_to_kir_json(const native_stmt_program_t *program) {
-    char *buffer = NULL;
-    size_t length = 0;
-    size_t capacity = 0;
-    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[],\"instructions\":[");
-    for (size_t i = 0; i < program->count; ++i) {
-        const native_stmt_t *stmt = &program->statements[i];
-        if (i > 0) {
-            append_char(&buffer, &length, &capacity, ',');
-        }
-        if (stmt->kind == NATIVE_STMT_LET) {
-            append_text(&buffer, &length, &capacity, "{\"op\":\"let\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->name);
-            append_text(&buffer, &length, &capacity, ",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else if (stmt->kind == NATIVE_STMT_PRINT) {
-            append_text(&buffer, &length, &capacity, "{\"op\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->expr);
-            append_char(&buffer, &length, &capacity, '}');
-        } else {
-            append_text(&buffer, &length, &capacity, "{\"op\":\"if\",\"condition\":{\"kind\":\"var\",\"name\":");
-            append_json_string_to_buffer(&buffer, &length, &capacity, stmt->condition_name);
-            append_text(&buffer, &length, &capacity, "},\"then\":[{\"op\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->then_expr);
-            append_text(&buffer, &length, &capacity, "}],\"else\":[{\"op\":\"print\",\"expr\":");
-            append_expr_json(&buffer, &length, &capacity, &stmt->else_expr);
-            append_text(&buffer, &length, &capacity, "}]}");
-        }
-    }
-    append_text(&buffer, &length, &capacity, "]}");
-    return buffer;
-}
-
-static char *native_stmt_program_to_analysis_json(void) {
-    return strdup("{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}");
-}
-
-static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *program) {
-    native_env_value_t *values = NULL;
-    size_t value_count = 0;
+static int eval_native_stmt_program_collect_prints(
+    const native_stmt_program_t *program,
+    const native_env_value_t *initial_values,
+    size_t initial_count,
+    char ***out_prints,
+    size_t *out_print_count
+) {
+    native_env_value_t *values = clone_env_values(initial_values, initial_count);
+    size_t value_count = initial_count;
     char **prints = NULL;
     size_t print_count = 0;
 
@@ -2539,12 +2788,12 @@ static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *p
             if (!value.name) {
                 fail("out of memory");
             }
-            if (stmt->expr.kind == NATIVE_EXPR_EQ_VAR_STRING) {
+            if (stmt->expr.kind == NATIVE_EXPR_EQ_VAR_STRING || stmt->expr.kind == NATIVE_EXPR_EQ_STRING_STRING) {
                 value.kind = ENV_BOOL;
                 if (!eval_native_expr_to_bool(&stmt->expr, values, value_count, &value.boolean)) {
                     free(value.name);
                     free_env_values(values, value_count);
-                    return NULL;
+                    return 0;
                 }
             } else {
                 value.kind = ENV_STRING;
@@ -2552,7 +2801,7 @@ static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *p
                 if (!value.text) {
                     free(value.name);
                     free_env_values(values, value_count);
-                    return NULL;
+                    return 0;
                 }
             }
             native_env_value_t *next_values = realloc(values, (value_count + 1) * sizeof(native_env_value_t));
@@ -2563,21 +2812,20 @@ static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *p
             values[value_count++] = value;
             continue;
         }
-        const native_expr_t *expr = stmt->kind == NATIVE_STMT_PRINT ? &stmt->expr : NULL;
         char *text = NULL;
         if (stmt->kind == NATIVE_STMT_PRINT) {
-            text = eval_native_expr_to_string(expr, values, value_count);
+            text = eval_native_expr_to_string(&stmt->expr, values, value_count);
         } else {
             native_env_value_t *condition = find_env_value(values, value_count, stmt->condition_name);
             if (!condition || condition->kind != ENV_BOOL) {
                 free_env_values(values, value_count);
-                return NULL;
+                return 0;
             }
             text = eval_native_expr_to_string(condition->boolean ? &stmt->then_expr : &stmt->else_expr, values, value_count);
         }
         if (!text) {
             free_env_values(values, value_count);
-            return NULL;
+            return 0;
         }
         char **next_prints = realloc(prints, (print_count + 1) * sizeof(char *));
         if (!next_prints) {
@@ -2587,6 +2835,13 @@ static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *p
         prints[print_count++] = text;
     }
 
+    free_env_values(values, value_count);
+    *out_prints = prints;
+    *out_print_count = print_count;
+    return 1;
+}
+
+static char *print_texts_to_artifact_json(char **prints, size_t print_count) {
     char *buffer = NULL;
     size_t length = 0;
     size_t capacity = 0;
@@ -2598,10 +2853,195 @@ static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *p
         append_json_string_to_buffer(&buffer, &length, &capacity, prints[i]);
         free(prints[i]);
     }
-    append_text(&buffer, &length, &capacity, "]}");
     free(prints);
-    free_env_values(values, value_count);
+    append_text(&buffer, &length, &capacity, "]}");
     return buffer;
+}
+
+static char *native_stmt_program_to_parse_json(const native_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[],\"statements\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, program, 0);
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_stmt_program_to_hir_json(const native_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[],\"statements\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, program, 0);
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_stmt_program_to_kir_json(const native_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[],\"instructions\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, program, 1);
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_stmt_program_to_analysis_json(void) {
+    return strdup("{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}");
+}
+
+static char *native_stmt_program_to_artifact_json(const native_stmt_program_t *program) {
+    char **prints = NULL;
+    size_t print_count = 0;
+    if (!eval_native_stmt_program_collect_prints(program, NULL, 0, &prints, &print_count)) {
+        return NULL;
+    }
+    return print_texts_to_artifact_json(prints, print_count);
+}
+
+static char *native_function_program_to_parse_json(const native_function_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[{\"kind\":\"fn\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->function.name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[");
+    if (program->function.param_name) {
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->function.param_name);
+    }
+    append_text(&buffer, &length, &capacity, "],\"body\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, &program->function.body, 0);
+    append_text(&buffer, &length, &capacity, "]}],\"statements\":[{\"kind\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[");
+    if (program->call_arg) {
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->call_arg);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    if (program->top_level.count > 0) {
+        append_char(&buffer, &length, &capacity, ',');
+        append_native_stmt_program_json(&buffer, &length, &capacity, &program->top_level, 0);
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_function_program_to_hir_json(const native_function_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[{\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->function.name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[");
+    if (program->function.param_name) {
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->function.param_name);
+    }
+    append_text(&buffer, &length, &capacity, "],\"body\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, &program->function.body, 0);
+    append_text(&buffer, &length, &capacity, "]}],\"statements\":[{\"kind\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[");
+    if (program->call_arg) {
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->call_arg);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    if (program->top_level.count > 0) {
+        append_char(&buffer, &length, &capacity, ',');
+        append_native_stmt_program_json(&buffer, &length, &capacity, &program->top_level, 0);
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_function_program_to_kir_json(const native_function_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[{\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->function.name);
+    append_text(&buffer, &length, &capacity, ",\"params\":[");
+    if (program->function.param_name) {
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->function.param_name);
+    }
+    append_text(&buffer, &length, &capacity, "],\"body\":[");
+    append_native_stmt_program_json(&buffer, &length, &capacity, &program->function.body, 1);
+    append_text(&buffer, &length, &capacity, "]}],\"instructions\":[{\"op\":\"call\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->call_name);
+    append_text(&buffer, &length, &capacity, ",\"args\":[");
+    if (program->call_arg) {
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(&buffer, &length, &capacity, program->call_arg);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    if (program->top_level.count > 0) {
+        append_char(&buffer, &length, &capacity, ',');
+        append_native_stmt_program_json(&buffer, &length, &capacity, &program->top_level, 1);
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_function_program_to_analysis_json(const native_function_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"analysis_v1\",\"function_arities\":{");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->function.name);
+    append_text(&buffer, &length, &capacity, program->function.param_name ? ":1},\"effects\":{\"program\":[\"print\"],\"functions\":{" : ":0},\"effects\":{\"program\":[\"print\"],\"functions\":{");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->function.name);
+    append_text(&buffer, &length, &capacity, ":[\"print\"]}}}");
+    return buffer;
+}
+
+static char *native_function_program_to_artifact_json(const native_function_program_t *program) {
+    native_env_value_t initial_value = {0};
+    native_env_value_t *initial_values = NULL;
+    size_t initial_count = 0;
+    if (program->function.param_name) {
+        initial_value.name = strdup(program->function.param_name);
+        initial_value.kind = ENV_STRING;
+        initial_value.text = strdup(program->call_arg ? program->call_arg : "");
+        if (!initial_value.name || !initial_value.text) {
+            fail("out of memory");
+        }
+        initial_values = &initial_value;
+        initial_count = 1;
+    }
+    char **body_prints = NULL;
+    size_t body_count = 0;
+    if (!eval_native_stmt_program_collect_prints(&program->function.body, initial_values, initial_count, &body_prints, &body_count)) {
+        free(initial_value.name);
+        free(initial_value.text);
+        return NULL;
+    }
+    char **top_prints = NULL;
+    size_t top_count = 0;
+    if (program->top_level.count > 0 && !eval_native_stmt_program_collect_prints(&program->top_level, NULL, 0, &top_prints, &top_count)) {
+        for (size_t i = 0; i < body_count; ++i) free(body_prints[i]);
+        free(body_prints);
+        free(initial_value.name);
+        free(initial_value.text);
+        return NULL;
+    }
+    char **all_prints = realloc(body_prints, (body_count + top_count) * sizeof(char *));
+    if (body_count + top_count > 0 && !all_prints) {
+        fail("out of memory");
+    }
+    body_prints = all_prints;
+    for (size_t i = 0; i < top_count; ++i) {
+        body_prints[body_count + i] = top_prints[i];
+    }
+    free(top_prints);
+    free(initial_value.name);
+    free(initial_value.text);
+    return print_texts_to_artifact_json(body_prints, body_count + top_count);
 }
 
 static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
@@ -3044,6 +3484,7 @@ int main(int argc, char **argv) {
         }
         native_print_program_t native_print_program = {0};
         native_let_print_program_t native_let_print_program = {0};
+        native_function_program_t native_function_program = {0};
         native_zero_arg_fn_program_t native_zero_arg_fn_program = {0};
         native_single_arg_fn_program_t native_single_arg_fn_program = {0};
         native_stmt_program_t native_stmt_program = {0};
@@ -3051,6 +3492,7 @@ int main(int argc, char **argv) {
         native_if_stmt_program_t native_if_stmt_program = {0};
         int has_native_print_program = try_parse_native_print_program(program_source, &native_print_program);
         int has_native_let_print_program = 0;
+        int has_native_function_program = 0;
         int has_native_zero_arg_fn_program = 0;
         int has_native_single_arg_fn_program = 0;
         int has_native_stmt_program = 0;
@@ -3060,18 +3502,21 @@ int main(int argc, char **argv) {
             has_native_let_print_program = try_parse_native_let_print_program(program_source, &native_let_print_program);
         }
         if (!has_native_print_program && !has_native_let_print_program) {
+            has_native_function_program = try_parse_native_function_program(program_source, &native_function_program);
+        }
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program) {
             has_native_zero_arg_fn_program = try_parse_native_zero_arg_fn_program(program_source, &native_zero_arg_fn_program);
         }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program) {
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program) {
             has_native_single_arg_fn_program = try_parse_native_single_arg_fn_program(program_source, &native_single_arg_fn_program);
         }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program) {
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program) {
             has_native_stmt_program = try_parse_native_stmt_program(program_source, &native_stmt_program);
         }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program) {
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program) {
             has_native_if_expr_program = try_parse_native_if_expr_program(program_source, &native_if_expr_program);
         }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program && !has_native_if_expr_program) {
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program && !has_native_if_expr_program) {
             has_native_if_stmt_program = try_parse_native_if_stmt_program(program_source, &native_if_stmt_program);
         }
         if (has_native_print_program) {
@@ -3162,6 +3607,51 @@ int main(int argc, char **argv) {
             free(program_source);
             free(frontend_kir);
             free(canonical_frontend);
+            return 0;
+        }
+        if (has_native_function_program) {
+            char *raw_ast = native_function_program_to_parse_json(&native_function_program);
+            char *raw_hir = native_function_program_to_hir_json(&native_function_program);
+            char *raw_kir = native_function_program_to_kir_json(&native_function_program);
+            char *raw_analysis = native_function_program_to_analysis_json(&native_function_program);
+            char *raw_artifact = native_function_program_to_artifact_json(&native_function_program);
+            if (!raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact) {
+                free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
+                free_native_function_program(&native_function_program);
+                free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
+                unsupported_source();
+                return 1;
+            }
+
+            if (strcmp(command, "selfhost-run") == 0) {
+                if (use_json) {
+                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                    fputc('\n', stdout);
+                } else {
+                    emit_print_many_stdout(raw_artifact);
+                }
+            } else if (strcmp(command, "selfhost-check") == 0) {
+                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-emit") == 0) {
+                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-capir") == 0) {
+                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-parse") == 0) {
+                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+                emit_json_string(argv[arg_index + 1]);
+                printf(",\"ast\":");
+                emit_json_string(raw_ast);
+                fputs("}\n", stdout);
+            } else {
+                unsupported_source();
+            }
+
+            free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
+            free_native_function_program(&native_function_program);
+            free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
             return 0;
         }
         if (has_native_zero_arg_fn_program) {
@@ -3379,6 +3869,7 @@ int main(int argc, char **argv) {
         if (!matched) {
             free_native_print_program(&native_print_program);
             free_native_let_print_program(&native_let_print_program);
+            free_native_function_program(&native_function_program);
             free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
             free_native_single_arg_fn_program(&native_single_arg_fn_program);
             free_native_stmt_program(&native_stmt_program);
@@ -3465,6 +3956,7 @@ int main(int argc, char **argv) {
         free(bundle_json);
         free_native_print_program(&native_print_program);
         free_native_let_print_program(&native_let_print_program);
+        free_native_function_program(&native_function_program);
         free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
         free_native_single_arg_fn_program(&native_single_arg_fn_program);
         free_native_stmt_program(&native_stmt_program);
