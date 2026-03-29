@@ -605,6 +605,8 @@ static char *trim_copy(const char *text) {
     return out;
 }
 
+static int parse_ident_expr(const char *text, char **out);
+
 static int parse_string_literal_expr(const char *text, char **out) {
     size_t len = strlen(text);
     if (len < 2 || text[0] != '"' || text[len - 1] != '"') {
@@ -661,6 +663,7 @@ static int parse_print_expr(const char *text, native_expr_t *out) {
             char *left = trim_copy(inside);
             char *right = trim_copy(comma + 1);
             char *left_value = NULL;
+            char *left_ident = NULL;
             char *right_value = NULL;
             if (parse_string_literal_expr(left, &left_value) && parse_string_literal_expr(right, &right_value)) {
                 out->kind = NATIVE_EXPR_CONCAT;
@@ -672,9 +675,20 @@ static int parse_print_expr(const char *text, native_expr_t *out) {
                 free(trimmed);
                 return 1;
             }
+            free(left_value);
+            if (parse_ident_expr(left, &left_ident) && parse_string_literal_expr(right, &right_value)) {
+                out->kind = NATIVE_EXPR_CONCAT_VAR_STRING;
+                out->left = left_ident;
+                out->right = right_value;
+                free(left);
+                free(right);
+                free(inside);
+                free(trimmed);
+                return 1;
+            }
             free(left);
             free(right);
-            free(left_value);
+            free(left_ident);
             free(right_value);
         }
         free(inside);
@@ -3482,132 +3496,12 @@ int main(int argc, char **argv) {
             unsupported_source();
             return 1;
         }
-        native_print_program_t native_print_program = {0};
-        native_let_print_program_t native_let_print_program = {0};
         native_function_program_t native_function_program = {0};
-        native_zero_arg_fn_program_t native_zero_arg_fn_program = {0};
-        native_single_arg_fn_program_t native_single_arg_fn_program = {0};
         native_stmt_program_t native_stmt_program = {0};
-        native_if_expr_program_t native_if_expr_program = {0};
-        native_if_stmt_program_t native_if_stmt_program = {0};
-        int has_native_print_program = try_parse_native_print_program(program_source, &native_print_program);
-        int has_native_let_print_program = 0;
-        int has_native_function_program = 0;
-        int has_native_zero_arg_fn_program = 0;
-        int has_native_single_arg_fn_program = 0;
+        int has_native_function_program = try_parse_native_function_program(program_source, &native_function_program);
         int has_native_stmt_program = 0;
-        int has_native_if_expr_program = 0;
-        int has_native_if_stmt_program = 0;
-        if (!has_native_print_program) {
-            has_native_let_print_program = try_parse_native_let_print_program(program_source, &native_let_print_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program) {
-            has_native_function_program = try_parse_native_function_program(program_source, &native_function_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program) {
-            has_native_zero_arg_fn_program = try_parse_native_zero_arg_fn_program(program_source, &native_zero_arg_fn_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program) {
-            has_native_single_arg_fn_program = try_parse_native_single_arg_fn_program(program_source, &native_single_arg_fn_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program) {
+        if (!has_native_function_program) {
             has_native_stmt_program = try_parse_native_stmt_program(program_source, &native_stmt_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program) {
-            has_native_if_expr_program = try_parse_native_if_expr_program(program_source, &native_if_expr_program);
-        }
-        if (!has_native_print_program && !has_native_let_print_program && !has_native_function_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_stmt_program && !has_native_if_expr_program) {
-            has_native_if_stmt_program = try_parse_native_if_stmt_program(program_source, &native_if_stmt_program);
-        }
-        if (has_native_print_program) {
-            char *raw_ast = native_print_program_to_parse_json(&native_print_program);
-            char *raw_hir = native_print_program_to_hir_json(&native_print_program);
-            char *raw_kir = native_print_program_to_kir_json(&native_print_program);
-            char *raw_analysis = native_print_program_to_analysis_json();
-            char *raw_artifact = native_print_program_to_artifact_json(&native_print_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast);
-            free(raw_hir);
-            free(raw_kir);
-            free(raw_analysis);
-            free(raw_artifact);
-            free_native_print_program(&native_print_program);
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
-            return 0;
-        }
-        if (has_native_let_print_program) {
-            char *raw_ast = native_let_print_program_to_parse_json(&native_let_print_program);
-            char *raw_hir = native_let_print_program_to_hir_json(&native_let_print_program);
-            char *raw_kir = native_let_print_program_to_kir_json(&native_let_print_program);
-            char *raw_analysis = native_let_print_program_to_analysis_json();
-            char *raw_artifact = native_let_print_program_to_artifact_json(&native_let_print_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast);
-            free(raw_hir);
-            free(raw_kir);
-            free(raw_analysis);
-            free(raw_artifact);
-            free_native_let_print_program(&native_let_print_program);
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
-            return 0;
         }
         if (has_native_function_program) {
             char *raw_ast = native_function_program_to_parse_json(&native_function_program);
@@ -3652,96 +3546,6 @@ int main(int argc, char **argv) {
             free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
             free_native_function_program(&native_function_program);
             free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
-            return 0;
-        }
-        if (has_native_zero_arg_fn_program) {
-            char *raw_ast = native_zero_arg_fn_program_to_parse_json(&native_zero_arg_fn_program);
-            char *raw_hir = native_zero_arg_fn_program_to_hir_json(&native_zero_arg_fn_program);
-            char *raw_kir = native_zero_arg_fn_program_to_kir_json(&native_zero_arg_fn_program);
-            char *raw_analysis = native_zero_arg_fn_program_to_analysis_json(&native_zero_arg_fn_program);
-            char *raw_artifact = native_zero_arg_fn_program_to_artifact_json(&native_zero_arg_fn_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast);
-            free(raw_hir);
-            free(raw_kir);
-            free(raw_analysis);
-            free(raw_artifact);
-            free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
-            return 0;
-        }
-        if (has_native_single_arg_fn_program) {
-            char *raw_ast = native_single_arg_fn_program_to_parse_json(&native_single_arg_fn_program);
-            char *raw_hir = native_single_arg_fn_program_to_hir_json(&native_single_arg_fn_program);
-            char *raw_kir = native_single_arg_fn_program_to_kir_json(&native_single_arg_fn_program);
-            char *raw_analysis = native_single_arg_fn_program_to_analysis_json(&native_single_arg_fn_program);
-            char *raw_artifact = native_single_arg_fn_program_to_artifact_json(&native_single_arg_fn_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast);
-            free(raw_hir);
-            free(raw_kir);
-            free(raw_analysis);
-            free(raw_artifact);
-            free_native_single_arg_fn_program(&native_single_arg_fn_program);
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
             return 0;
         }
         if (has_native_stmt_program) {
@@ -3789,92 +3593,10 @@ int main(int argc, char **argv) {
             free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
             return 0;
         }
-        if (has_native_if_expr_program) {
-            char *raw_ast = native_if_expr_program_to_parse_json(&native_if_expr_program);
-            char *raw_hir = native_if_expr_program_to_hir_json(&native_if_expr_program);
-            char *raw_kir = native_if_expr_program_to_kir_json(&native_if_expr_program);
-            char *raw_analysis = native_if_expr_program_to_analysis_json();
-            char *raw_artifact = native_if_expr_program_to_artifact_json(&native_if_expr_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
-            free_native_if_expr_program(&native_if_expr_program);
-            free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
-            return 0;
-        }
-        if (has_native_if_stmt_program) {
-            char *raw_ast = native_if_stmt_program_to_parse_json(&native_if_stmt_program);
-            char *raw_hir = native_if_stmt_program_to_hir_json(&native_if_stmt_program);
-            char *raw_kir = native_if_stmt_program_to_kir_json(&native_if_stmt_program);
-            char *raw_analysis = native_if_stmt_program_to_analysis_json();
-            char *raw_artifact = native_if_stmt_program_to_artifact_json(&native_if_stmt_program);
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
-                unsupported_source();
-            }
-
-            free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
-            free_native_if_stmt_program(&native_if_stmt_program);
-            free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
-            return 0;
-        }
         const canonical_case_t *matched = match_canonical_case(kagi_home, program_source);
         if (!matched) {
-            free_native_print_program(&native_print_program);
-            free_native_let_print_program(&native_let_print_program);
             free_native_function_program(&native_function_program);
-            free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
-            free_native_single_arg_fn_program(&native_single_arg_fn_program);
             free_native_stmt_program(&native_stmt_program);
-            free_native_if_expr_program(&native_if_expr_program);
-            free_native_if_stmt_program(&native_if_stmt_program);
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
@@ -3954,14 +3676,8 @@ int main(int argc, char **argv) {
         free(raw_analysis);
         free(raw_artifact);
         free(bundle_json);
-        free_native_print_program(&native_print_program);
-        free_native_let_print_program(&native_let_print_program);
         free_native_function_program(&native_function_program);
-        free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
-        free_native_single_arg_fn_program(&native_single_arg_fn_program);
         free_native_stmt_program(&native_stmt_program);
-        free_native_if_expr_program(&native_if_expr_program);
-        free_native_if_stmt_program(&native_if_stmt_program);
         free(frontend_source);
         free(program_source);
         free(frontend_kir);
