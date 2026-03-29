@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .diagnostics import DiagnosticError, diagnostic_from_runtime_error
+from .host_abi import KagiHostCommandV1, host_command_from_argparse
 from .ir import action_to_string
 
 
@@ -93,6 +94,14 @@ def read_text_file(path: str) -> str:
 
 def read_selfhost_sources(frontend_path: str, source_path: str) -> tuple[str, str]:
     return read_text_file(frontend_path), read_text_file(source_path)
+
+
+def read_selfhost_sources_with(
+    read_text: Callable[[str], str],
+    frontend_path: str,
+    source_path: str,
+) -> tuple[str, str]:
+    return read_text(frontend_path), read_text(source_path)
 
 
 def parse_selfhost_ast(frontend_source: str, program_source: str) -> object:
@@ -244,37 +253,43 @@ def emit_diagnostic_default(exc: Exception, *, phase: str, use_json: bool, emit_
     raise SystemExit(1)
 
 
-def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> None:
+def run_host_command_v1(
+    command: KagiHostCommandV1,
+    *,
+    emit_payload: EmitPayload,
+    emit_text: EmitText,
+    read_text: Callable[[str], str] = read_text_file,
+) -> None:
     def emit_diag(exc: Exception, *, phase: str, use_json: bool) -> None:
         emit_diagnostic_default(exc, phase=phase, use_json=use_json, emit_payload=emit_payload)
 
-    if args.command == "run":
+    if command.command == "run":
         try:
             _, _, parse_core_program = _frontend_api()
             _, execute_program_ir, _, _ = _runtime_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             result = execute_program_ir(parse_core_program(source))
             emit_payload(heap_to_json(result))
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "trace":
+    if command.command == "trace":
         try:
             _, _, parse_core_program = _frontend_api()
             _, execute_program_ir, _, _ = _runtime_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             result = execute_program_ir(parse_core_program(source))
             emit_payload(trace_to_json(result))
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "check":
+    if command.command == "check":
         try:
             _, _, parse_core_program = _frontend_api()
             _, execute_program_ir, _, well_formed = _runtime_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             program = parse_core_program(source)
             result = execute_program_ir(program)
             emit_payload(
@@ -286,25 +301,25 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                 }
             )
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "exports":
+    if command.command == "exports":
         try:
             _, _, parse_core_program = _frontend_api()
             _, execute_program_ir, export_owner, _ = _runtime_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             result = execute_program_ir(parse_core_program(source))
             emit_payload({str(owner): export_owner(result.heap, owner) for owner in sorted(result.heap.keys())})
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "bootstrap-check":
+    if command.command == "bootstrap-check":
         try:
             execute_bootstrap_program, parse_bootstrap_program, _ = _frontend_api()
             _, _, _, well_formed = _runtime_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             program = parse_bootstrap_program(source)
             result = execute_bootstrap_program(source)
             emit_payload(
@@ -317,33 +332,33 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                 }
             )
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "bootstrap-trace":
+    if command.command == "bootstrap-trace":
         try:
             execute_bootstrap_program, _, _ = _frontend_api()
-            source = read_text_file(args.file)
+            source = read_text(command.file)
             result = execute_bootstrap_program(source)
             emit_payload(trace_to_json(result))
         except Exception as exc:
-            emit_diag(exc, phase="runtime", use_json=args.json)
+            emit_diag(exc, phase="runtime", use_json=command.use_json)
         return
 
-    if args.command == "subset-run":
+    if command.command == "subset-run":
         try:
             run_subset_program = _subset_api()
-            source = read_text_file(args.file)
-            value = run_subset_program(source, entry=args.entry, args=list(args.arg))
-            emit_payload({"ok": True, "entry": args.entry, "value": value})
+            source = read_text(command.file)
+            value = run_subset_program(source, entry=command.entry, args=list(command.args))
+            emit_payload({"ok": True, "entry": command.entry, "value": value})
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-run":
+    if command.command == "selfhost-run":
         try:
-            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
-            if args.json:
+            frontend_source, program_source = read_selfhost_sources_with(read_text, command.frontend, command.source)
+            if command.use_json:
                 bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
                 raw_ast = bundle_field_raw(bundle, "ast")
                 raw_compile = bundle_field_raw(bundle, "compile")
@@ -352,7 +367,7 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                         "ok": True,
                         "entry": "pipeline",
                         "metadata": selfhost_metadata_v1(),
-                        "source": str(args.source),
+                        "source": str(command.source),
                         "ast": raw_ast,
                         "hir": bundle_field_object(bundle, "hir"),
                         "kir": kir_from_pipeline_payload(bundle, raw_compile=raw_compile),
@@ -365,21 +380,21 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                 raw_compile = execute_selfhost_text_entry(frontend_source, program_source, entry="compile")
                 emit_text(stdout_from_raw_artifact(raw_compile))
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-check":
+    if command.command == "selfhost-check":
         try:
-            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            frontend_source, program_source = read_selfhost_sources_with(read_text, command.frontend, command.source)
             bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
                     "entry": "pipeline",
                     "metadata": selfhost_metadata_v1(),
-                    "source": str(args.source),
-                    "ast": bundle_field_raw(bundle, "ast") if args.json else None,
-                    "hir": bundle_field_object(bundle, "hir") if args.json else None,
+                    "source": str(command.source),
+                    "ast": bundle_field_raw(bundle, "ast") if command.use_json else None,
+                    "hir": bundle_field_object(bundle, "hir") if command.use_json else None,
                     "value": "ok",
                     "effects": effects_from_pipeline_payload(bundle),
                 }
@@ -390,41 +405,41 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                     {
                         "ok": False,
                         "entry": "pipeline",
-                        "source": str(args.source),
+                        "source": str(command.source),
                         "ast": None,
                         "value": exc.diagnostic.message,
                     }
                 )
                 raise SystemExit(1)
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-parse":
+    if command.command == "selfhost-parse":
         try:
-            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            frontend_source, program_source = read_selfhost_sources_with(read_text, command.frontend, command.source)
             value = parse_selfhost_ast(frontend_source, program_source)
             ok = not str(value).startswith("error:")
-            emit_payload({"ok": ok, "entry": args.entry, "source": str(args.source), "ast": value})
+            emit_payload({"ok": ok, "entry": command.entry, "source": str(command.source), "ast": value})
             if not ok:
                 raise SystemExit(1)
         except SystemExit:
             raise
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-emit":
+    if command.command == "selfhost-emit":
         try:
-            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            frontend_source, program_source = read_selfhost_sources_with(read_text, command.frontend, command.source)
             bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             emit_payload(
                 {
                     "ok": True,
                     "entry": "pipeline",
                     "metadata": selfhost_metadata_v1(),
-                    "source": str(args.source),
+                    "source": str(command.source),
                     "ast": bundle_field_raw(bundle, "ast"),
                     "hir": bundle_field_object(bundle, "hir"),
                     "artifact": bundle_field_raw(bundle, "artifact"),
@@ -433,12 +448,12 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
         except SystemExit:
             raise
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-capir":
+    if command.command == "selfhost-capir":
         try:
-            frontend_source, program_source = read_selfhost_sources(args.frontend, args.source)
+            frontend_source, program_source = read_selfhost_sources_with(read_text, command.frontend, command.source)
             bundle = load_selfhost_pipeline_bundle(frontend_source, program_source)
             raw_compile = bundle_field_raw(bundle, "compile")
             emit_payload(
@@ -446,7 +461,7 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
                     "ok": True,
                     "entry": "pipeline",
                     "metadata": selfhost_metadata_v1(),
-                    "source": str(args.source),
+                    "source": str(command.source),
                     "ast": bundle_field_raw(bundle, "ast"),
                     "hir": bundle_field_object(bundle, "hir"),
                     "artifact": raw_compile,
@@ -457,28 +472,28 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
         except SystemExit:
             raise
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-freeze":
+    if command.command == "selfhost-freeze":
         try:
             _, compile_selfhost_frontend_to_kir_v1, _, _ = _selfhost_api()
-            frontend_source = read_text_file(args.frontend)
+            frontend_source = read_text(command.frontend)
             kir_json = compile_selfhost_frontend_to_kir_v1(frontend_source)
-            if args.json:
+            if command.use_json:
                 emit_payload({"ok": True, "kir": json.loads(kir_json)})
             else:
                 emit_text(kir_json)
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-build":
+    if command.command == "selfhost-build":
         try:
             build_selfhost_frontend_v1, _, _, _ = _selfhost_api()
-            frontend_source = read_text_file(args.frontend)
+            frontend_source = read_text(command.frontend)
             build = build_selfhost_frontend_v1(frontend_source)
-            if args.json:
+            if command.use_json:
                 emit_payload(
                     {
                         "ok": True,
@@ -491,15 +506,15 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
             else:
                 emit_text(build.stage1_kir)
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    if args.command == "selfhost-bootstrap":
+    if command.command == "selfhost-bootstrap":
         try:
             bootstrap_selfhost_frontend_v1 = _selfhost_bootstrap_api()
-            frontend_source = read_text_file(args.frontend)
+            frontend_source = read_text(command.frontend)
             bootstrap = bootstrap_selfhost_frontend_v1(frontend_source)
-            if args.json:
+            if command.use_json:
                 emit_payload(
                     {
                         "ok": True,
@@ -513,7 +528,15 @@ def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> 
             else:
                 emit_text(bootstrap.stage2_kir)
         except Exception as exc:
-            emit_diag(exc, phase="subset-runtime", use_json=args.json)
+            emit_diag(exc, phase="subset-runtime", use_json=command.use_json)
         return
 
-    raise DiagnosticError(diagnostic_from_runtime_error("cli", f"unsupported command: {args.command}"))
+    raise DiagnosticError(diagnostic_from_runtime_error("cli", f"unsupported command: {command.command}"))
+
+
+def run_cli_command(args, *, emit_payload: EmitPayload, emit_text: EmitText) -> None:
+    return run_host_command_v1(
+        host_command_from_argparse(args),
+        emit_payload=emit_payload,
+        emit_text=emit_text,
+    )

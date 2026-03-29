@@ -10,10 +10,12 @@ from unittest.mock import patch
 
 import kagi
 import kagi.cli as cli_module
+import kagi.cli_host as cli_host_module
 import kagi.kir_runtime as kir_runtime_module
 import kagi.selfhost_runtime as selfhost_runtime_module
 import kagi.subset_builtins as subset_builtins
 from kagi.compile_result import compile_source_v1
+from kagi.host_abi import KagiHostCommandV1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
     capir_fragment_from_kir_program,
@@ -507,6 +509,34 @@ class RuntimeTest(unittest.TestCase):
         self.assertFalse(hasattr(cli_module, "Path"))
         self.assertEqual(run_spy.call_count, 1)
         self.assertEqual(run_spy.call_args.args[0].command, args.command)
+
+    def test_cli_host_adapts_argparse_to_host_command_v1(self):
+        parser = cli_module.build_parser()
+        args = parser.parse_args(["selfhost-run", "--json", "frontend.ks", "hello.ksrc"])
+        with patch.object(cli_host_module, "run_host_command_v1") as run_spy:
+            cli_host_module.run_cli_command(args, emit_payload=lambda _: None, emit_text=lambda _: None)
+        command = run_spy.call_args.args[0]
+        self.assertIsInstance(command, KagiHostCommandV1)
+        self.assertEqual(command.command, "selfhost-run")
+        self.assertTrue(command.use_json)
+        self.assertEqual(command.frontend, "frontend.ks")
+        self.assertEqual(command.source, "hello.ksrc")
+
+    def test_run_host_command_v1_executes_selfhost_bootstrap_without_argparse_namespace(self):
+        root = Path(__file__).resolve().parents[1]
+        payloads: list[dict] = []
+        cli_host_module.run_host_command_v1(
+            KagiHostCommandV1(
+                command="selfhost-bootstrap",
+                use_json=True,
+                frontend=str(root / "examples" / "selfhost_frontend.ks"),
+            ),
+            emit_payload=payloads.append,
+            emit_text=lambda _: None,
+        )
+        self.assertEqual(len(payloads), 1)
+        self.assertTrue(payloads[0]["ok"])
+        self.assertEqual(payloads[0]["seed_kind"], "canonical-seed-kir")
 
     def test_kir_program_to_artifact_rejects_non_print_only_program(self):
         program = KIRProgramV0(
