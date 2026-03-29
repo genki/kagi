@@ -4,7 +4,20 @@ from .diagnostics import Diagnostic, DiagnosticError
 from .bootstrap_builders import BOOTSTRAP_BUILTINS
 from .lower_subset_to_kir import SUBSET_KIR_BUILTINS, lower_subset_program_to_kir_v0
 from .subset_ast import BoolLiteral, Call, Expr, ExprStmt, FunctionDef, IfStmt, IntLiteral, LetStmt, ReturnSignal, ReturnStmt, Stmt, StringLiteral, SubsetProgram, Variable
-from .subset_builtins import CORE_BUILTINS
+from .subset_builtins import (
+    CORE_BUILTINS,
+    intrinsic_after_substring,
+    intrinsic_before_substring,
+    intrinsic_concat,
+    intrinsic_ends_with,
+    intrinsic_eq,
+    intrinsic_extract_quoted,
+    intrinsic_is_identifier,
+    intrinsic_line_at,
+    intrinsic_line_count,
+    intrinsic_starts_with,
+    intrinsic_trim,
+)
 from .subset_typecheck import typecheck_subset_program_v0
 
 
@@ -126,7 +139,7 @@ def eval_expr(functions: dict[str, FunctionDef], expr: Expr, env: dict[str, obje
                         snippet=None,
                     )
                 )
-            return f"{args[0]}{args[1]}"
+            return intrinsic_concat(args[0], args[1])
         if expr.callee == "eq":
             if len(args) != 2:
                 raise DiagnosticError(
@@ -139,7 +152,43 @@ def eval_expr(functions: dict[str, FunctionDef], expr: Expr, env: dict[str, obje
                         snippet=None,
                     )
                 )
-            return args[0] == args[1]
+            return intrinsic_eq(args[0], args[1])
+        if expr.callee == "trim":
+            if len(args) != 1:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="trim expects 1 argument", line=None, column=None, snippet=None))
+            return intrinsic_trim(args[0])
+        if expr.callee == "starts_with":
+            if len(args) != 2:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="starts_with expects 2 arguments", line=None, column=None, snippet=None))
+            return intrinsic_starts_with(args[0], args[1])
+        if expr.callee == "ends_with":
+            if len(args) != 2:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="ends_with expects 2 arguments", line=None, column=None, snippet=None))
+            return intrinsic_ends_with(args[0], args[1])
+        if expr.callee == "extract_quoted":
+            if len(args) != 1:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="extract_quoted expects 1 argument", line=None, column=None, snippet=None))
+            return intrinsic_extract_quoted(args[0])
+        if expr.callee == "line_count":
+            if len(args) != 1:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="line_count expects 1 argument", line=None, column=None, snippet=None))
+            return intrinsic_line_count(args[0])
+        if expr.callee == "line_at":
+            if len(args) != 2:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="line_at expects 2 arguments", line=None, column=None, snippet=None))
+            return intrinsic_line_at(args[0], args[1])
+        if expr.callee == "before_substring":
+            if len(args) != 2:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="before_substring expects 2 arguments", line=None, column=None, snippet=None))
+            return intrinsic_before_substring(args[0], args[1])
+        if expr.callee == "after_substring":
+            if len(args) != 2:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="after_substring expects 2 arguments", line=None, column=None, snippet=None))
+            return intrinsic_after_substring(args[0], args[1])
+        if expr.callee == "is_identifier":
+            if len(args) != 1:
+                raise DiagnosticError(Diagnostic(phase="subset-runtime", code="arity_mismatch", message="is_identifier expects 1 argument", line=None, column=None, snippet=None))
+            return intrinsic_is_identifier(args[0])
         if expr.callee == "current_program_source":
             if args:
                 raise DiagnosticError(

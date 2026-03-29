@@ -87,9 +87,15 @@
 - Stage 3: bundle decoder の compatibility shim 化は完了
   - `compile_result.py` は raw bundle decoder を直接使わない
   - selfhost runtime の typed bundle API を主経路にした
+- Stage 4: canonical runtime 縮退は完了
+  - canonical selfhost compile/run/freeze path から Python KIR executor を外した
+- Stage 5: front-half utility replacement は完了
+  - `subset_builtins.CORE_BUILTINS` を空にした
+  - string helper 群は `subset_eval.py`, `capir_runtime.py`, `kir_runtime.py` の intrinsic として扱う
 - 現在の主 blocker:
-  - Python KIR executor
-  - Python core expression builtin (`concat`, `eq`)
+  - noncanonical / fallback path の `subset_parser.py`
+  - fallback builtin 面の残互換層
+  - Python CLI host の縮退
 
 ## 当面のマイルストーン
 
@@ -168,7 +174,7 @@
 - bootstrap syntax は syntax sugar に留める
 - core semantics は Lean 最小核から逸脱しない
 
-## Fully Self-Hosted までの 5 段階
+## Fully Self-Hosted までの 6 段階
 
 1. Stage 1: host 依存の見える化
    - test と doc の両方で「なぜまだ fully self-hosted ではないか」を固定する
@@ -184,3 +190,7 @@
    - 完了
    - canonical selfhost compile/run/freeze path では Python builtin / KIR executor / subset parser-lowering を主経路から外した
    - Python は compatibility shim / bootstrap seed / differential oracle 側に後退した
+6. Stage 6: front-half utility replacement
+   - 完了
+   - `subset_builtins.CORE_BUILTINS` は空
+   - string helper builtin は interpreter / KIR path の intrinsic として実行する

@@ -21,6 +21,9 @@ from kagi.surface_ast import parse_surface_program_v1
 
 
 class BundleKirFutureTest(unittest.TestCase):
+    def test_python_core_builtin_map_is_empty_after_stage5(self):
+        self.assertEqual(subset_builtins.CORE_BUILTINS, {})
+
     def test_quote_builtin_is_removed_from_python_fallback_builtin_maps(self):
         self.assertNotIn("quote", subset_builtins.CORE_BUILTINS)
         self.assertNotIn("quote", subset_module.BUILTINS)

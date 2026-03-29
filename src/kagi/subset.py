@@ -28,6 +28,17 @@ from .subset_builtins import (
     builtin_line_count,
     builtin_starts_with,
     builtin_trim,
+    intrinsic_after_substring,
+    intrinsic_before_substring,
+    intrinsic_concat,
+    intrinsic_ends_with,
+    intrinsic_eq,
+    intrinsic_extract_quoted,
+    intrinsic_is_identifier,
+    intrinsic_line_at,
+    intrinsic_line_count,
+    intrinsic_starts_with,
+    intrinsic_trim,
 )
 from .bootstrap_builders import (
     BOOTSTRAP_BUILTINS,

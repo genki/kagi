@@ -28,6 +28,19 @@ from .kir import (
     kir_program_to_print_artifact,
     serialize_kir_program_v0,
 )
+from .subset_builtins import (
+    intrinsic_after_substring,
+    intrinsic_before_substring,
+    intrinsic_concat,
+    intrinsic_ends_with,
+    intrinsic_eq,
+    intrinsic_extract_quoted,
+    intrinsic_is_identifier,
+    intrinsic_line_at,
+    intrinsic_line_count,
+    intrinsic_starts_with,
+    intrinsic_trim,
+)
 
 
 @dataclass(frozen=True)
@@ -105,6 +118,50 @@ def _call_local_function_v0(
         if context is None or context.current_program_kir is None:
             return _UNHANDLED
         return context.current_program_kir
+    if name == "concat":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "concat takes 2 arguments"))
+        return intrinsic_concat(args[0], args[1])
+    if name == "eq":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "eq takes 2 arguments"))
+        return intrinsic_eq(args[0], args[1])
+    if name == "trim":
+        if len(args) != 1:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "trim takes 1 argument"))
+        return intrinsic_trim(args[0])
+    if name == "starts_with":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "starts_with takes 2 arguments"))
+        return intrinsic_starts_with(args[0], args[1])
+    if name == "ends_with":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "ends_with takes 2 arguments"))
+        return intrinsic_ends_with(args[0], args[1])
+    if name == "extract_quoted":
+        if len(args) != 1:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "extract_quoted takes 1 argument"))
+        return intrinsic_extract_quoted(args[0])
+    if name == "line_count":
+        if len(args) != 1:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "line_count takes 1 argument"))
+        return intrinsic_line_count(args[0])
+    if name == "line_at":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "line_at takes 2 arguments"))
+        return intrinsic_line_at(args[0], args[1])
+    if name == "before_substring":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "before_substring takes 2 arguments"))
+        return intrinsic_before_substring(args[0], args[1])
+    if name == "after_substring":
+        if len(args) != 2:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "after_substring takes 2 arguments"))
+        return intrinsic_after_substring(args[0], args[1])
+    if name == "is_identifier":
+        if len(args) != 1:
+            raise DiagnosticError(diagnostic_from_runtime_error("kir-runtime", "is_identifier takes 1 argument"))
+        return intrinsic_is_identifier(args[0])
     if name in builtins:
         return _UNHANDLED
     fn = functions.get(name)

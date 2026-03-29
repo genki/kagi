@@ -12,6 +12,7 @@ import kagi
 import kagi.cli as cli_module
 import kagi.kir_runtime as kir_runtime_module
 import kagi.selfhost_runtime as selfhost_runtime_module
+import kagi.subset_builtins as subset_builtins
 from kagi.compile_result import compile_source_v1
 from kagi.capir_runtime import (
     capir_fragment_from_artifact,
@@ -255,6 +256,37 @@ class RuntimeTest(unittest.TestCase):
             value = run_subset_program(source, entry="main", args=["world!"])
         self.assertEqual(value, "hello, world!")
 
+    def test_subset_program_interpreter_does_not_need_string_helper_builtins_in_builtin_map(self):
+        source = """
+        fn main() {
+            let raw = "  print \\"hello\\"  ";
+            let text = trim(raw);
+            if starts_with(text, "print ") {
+                let inner = extract_quoted(text);
+                if is_identifier("hello_world") {
+                    return concat(inner, after_substring("prefix::done", "::"));
+                } else {
+                    return "bad";
+                }
+            } else {
+                return before_substring("x:y", ":");
+            }
+        }
+        """
+        patched_builtins = dict(subset_module.BUILTINS)
+        for name in (
+            "trim",
+            "starts_with",
+            "extract_quoted",
+            "is_identifier",
+            "after_substring",
+            "before_substring",
+        ):
+            patched_builtins.pop(name, None)
+        with patch("kagi.subset_eval.BUILTINS", patched_builtins):
+            value = run_subset_program(source, entry="main", args=[])
+        self.assertEqual(value, "hellodone")
+
     def test_subset_program_via_kir_matches_interpreter(self):
         source = """
         fn main(name) {
@@ -286,6 +318,43 @@ class RuntimeTest(unittest.TestCase):
         with patch("kagi.lower_subset_to_kir.SUBSET_KIR_BUILTINS", patched_builtins):
             actual = run_subset_program_via_kir(source, entry="main", args=["world!"])
         self.assertEqual(actual, "hello, world!")
+
+    def test_subset_program_via_kir_does_not_need_string_helper_builtins(self):
+        source = """
+        fn main() {
+            let raw = "  print \\"hello\\"  ";
+            let text = trim(raw);
+            let count = line_count("\\n one\\n two\\n");
+            if starts_with(text, "print ") {
+                let inner = extract_quoted(text);
+                if eq(line_at("\\n one\\n two\\n", 1), "two") {
+                    if eq(count, 2) {
+                        return concat(before_substring("hello::tail", "::"), after_substring("hello::tail", "::"));
+                    } else {
+                        return inner;
+                    }
+                } else {
+                    return inner;
+                }
+            } else {
+                return "bad";
+            }
+        }
+        """
+        patched_builtins = {
+            **subset_module.BUILTINS,
+            "trim": lambda *_args: (_ for _ in ()).throw(AssertionError("trim builtin should not be used by subset KIR path")),
+            "starts_with": lambda *_args: (_ for _ in ()).throw(AssertionError("starts_with builtin should not be used by subset KIR path")),
+            "extract_quoted": lambda *_args: (_ for _ in ()).throw(AssertionError("extract_quoted builtin should not be used by subset KIR path")),
+            "line_count": lambda *_args: (_ for _ in ()).throw(AssertionError("line_count builtin should not be used by subset KIR path")),
+            "line_at": lambda *_args: (_ for _ in ()).throw(AssertionError("line_at builtin should not be used by subset KIR path")),
+            "before_substring": lambda *_args: (_ for _ in ()).throw(AssertionError("before_substring builtin should not be used by subset KIR path")),
+            "after_substring": lambda *_args: (_ for _ in ()).throw(AssertionError("after_substring builtin should not be used by subset KIR path")),
+            "is_identifier": lambda *_args: (_ for _ in ()).throw(AssertionError("is_identifier builtin should not be used by subset KIR path")),
+        }
+        with patch("kagi.lower_subset_to_kir.SUBSET_KIR_BUILTINS", patched_builtins):
+            actual = run_subset_program_via_kir(source, entry="main", args=[])
+        self.assertEqual(actual, "hellotail")
 
     def test_subset_program_via_kir_does_not_call_python_kir_entry_runtime_for_builtin_free_function_path(self):
         source = """
