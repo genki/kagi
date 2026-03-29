@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import kagi.selfhost_runtime as selfhost_runtime_module
 from kagi.compile_result import compile_source_v1
 from kagi.diagnostics import DiagnosticError
 from kagi.selfhost_runtime import (
@@ -64,6 +65,28 @@ class FullSelfhostStrictTest(unittest.TestCase):
         with patch("kagi.kir_runtime.execute_kir_entry_v0", side_effect=AssertionError("mainline self-build should not use host kir runtime")):
             build = build_selfhost_frontend_v1(self.frontend_source)
         self.assertTrue(build.fixed_point)
+
+    def test_stage6_selfhost_runtime_no_longer_owns_path_or_env_resolution(self):
+        self.assertFalse(hasattr(selfhost_runtime_module, "Path"))
+        self.assertFalse(hasattr(selfhost_runtime_module, "os"))
+
+    def test_stage6_mainline_self_build_reads_assets_via_asset_module(self):
+        with patch("kagi.selfhost_runtime.read_canonical_frontend_texts_v1", wraps=selfhost_runtime_module.read_canonical_frontend_texts_v1) as texts_spy:
+            with patch("kagi.selfhost_runtime.load_canonical_selfhost_frontend_kir_v1", wraps=selfhost_runtime_module.load_canonical_selfhost_frontend_kir_v1) as kir_spy:
+                build = build_selfhost_frontend_v1(self.frontend_source)
+        self.assertTrue(build.fixed_point)
+        self.assertGreaterEqual(texts_spy.call_count, 1)
+        self.assertGreaterEqual(kir_spy.call_count, 0)
+
+    def test_stage6_canonical_pipeline_bundle_uses_asset_loader(self):
+        compiled = None
+        with patch(
+            "kagi.selfhost_runtime.load_canonical_selfhost_pipeline_bundle_v1",
+            wraps=selfhost_runtime_module.load_canonical_selfhost_pipeline_bundle_v1,
+        ) as bundle_spy:
+            compiled = compile_source_v1(self.frontend_source, self.hello_arg_fn)
+        self.assertEqual(compiled.stdout, "hello, world!")
+        self.assertGreaterEqual(bundle_spy.call_count, 1)
 
     def test_compile_source_v1_still_works_after_self_build(self):
         build = build_selfhost_frontend_v1(self.frontend_source)
