@@ -1410,6 +1410,145 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertIn('"kind":"let"', parse_payload["ast"])
             self.assertIn('"name":"message"', parse_payload["ast"])
 
+    def test_default_manifest_native_image_synthesizes_noncanonical_if_expr_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_expr.ksrc"
+            source_path.write_text(
+                'let greeting = concat("he", "llo")\n'
+                'let enabled = eq(greeting, "hello")\n'
+                'print if(enabled, greeting, "disabled")\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(run.stdout, "hello\n")
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(payload["ast"])
+            self.assertEqual(ast["statements"][2]["kind"], "print")
+            self.assertEqual(ast["statements"][2]["expr"]["kind"], "if")
+
+    def test_default_manifest_native_image_synthesizes_noncanonical_if_stmt_program(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            source_path = tmp_path / "if_stmt.ksrc"
+            source_path.write_text(
+                'let greeting = concat("he", "llo")\n'
+                'let enabled = eq(greeting, "hello")\n'
+                'if enabled {\n'
+                '  print greeting\n'
+                '} else {\n'
+                '  print "disabled"\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(run.stdout, "hello\n")
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(payload["ast"])
+            self.assertEqual(ast["statements"][2]["kind"], "if_stmt")
+
 
 if __name__ == "__main__":
     unittest.main()

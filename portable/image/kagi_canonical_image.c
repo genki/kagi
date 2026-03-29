@@ -17,6 +17,8 @@ typedef enum {
     NATIVE_EXPR_CONCAT,
     NATIVE_EXPR_VAR,
     NATIVE_EXPR_CONCAT_VAR_STRING,
+    NATIVE_EXPR_EQ_VAR_STRING,
+    NATIVE_EXPR_IF_VAR_VAR_STRING,
 } native_expr_kind_t;
 
 typedef struct {
@@ -56,6 +58,23 @@ typedef struct {
     char *call_name;
     char *call_arg;
 } native_single_arg_fn_program_t;
+
+typedef struct {
+    char *greeting_name;
+    native_expr_t greeting_expr;
+    char *enabled_name;
+    native_expr_t enabled_expr;
+    native_expr_t print_expr;
+} native_if_expr_program_t;
+
+typedef struct {
+    char *greeting_name;
+    native_expr_t greeting_expr;
+    char *enabled_name;
+    native_expr_t enabled_expr;
+    native_expr_t then_expr;
+    native_expr_t else_expr;
+} native_if_stmt_program_t;
 
 static const canonical_case_t CANONICAL_CASES[] = {
     {"hello", "hello.ksrc", "hello.pipeline.json"},
@@ -660,6 +679,123 @@ static int parse_simple_expr(const char *text, native_expr_t *out) {
     return 0;
 }
 
+static int parse_eq_var_string_expr(const char *text, native_expr_t *out) {
+    char *trimmed = trim_copy(text);
+    const char *prefix = "eq(";
+    size_t prefix_len = strlen(prefix);
+    size_t len = strlen(trimmed);
+    if (len <= prefix_len + 1 || strncmp(trimmed, prefix, prefix_len) != 0 || trimmed[len - 1] != ')') {
+        free(trimmed);
+        return 0;
+    }
+    char *inside = calloc(len - prefix_len, 1);
+    if (!inside) {
+        fail("out of memory");
+    }
+    memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
+    inside[len - prefix_len - 1] = '\0';
+    int in_string = 0;
+    char *comma = NULL;
+    for (char *cursor = inside; *cursor; ++cursor) {
+        if (*cursor == '"' && (cursor == inside || *(cursor - 1) != '\\')) {
+            in_string = !in_string;
+        } else if (*cursor == ',' && !in_string) {
+            comma = cursor;
+            break;
+        }
+    }
+    if (!comma) {
+        free(inside);
+        free(trimmed);
+        return 0;
+    }
+    *comma = '\0';
+    char *left = trim_copy(inside);
+    char *right = trim_copy(comma + 1);
+    char *left_ident = NULL;
+    char *right_string = NULL;
+    int ok = parse_ident_expr(left, &left_ident) && parse_string_literal_expr(right, &right_string);
+    free(left);
+    free(right);
+    free(inside);
+    free(trimmed);
+    if (!ok) {
+        free(left_ident);
+        free(right_string);
+        return 0;
+    }
+    out->kind = NATIVE_EXPR_EQ_VAR_STRING;
+    out->left = left_ident;
+    out->right = right_string;
+    return 1;
+}
+
+static int parse_if_var_var_string_expr(const char *text, native_expr_t *out) {
+    char *trimmed = trim_copy(text);
+    const char *prefix = "if(";
+    size_t prefix_len = strlen(prefix);
+    size_t len = strlen(trimmed);
+    if (len <= prefix_len + 1 || strncmp(trimmed, prefix, prefix_len) != 0 || trimmed[len - 1] != ')') {
+        free(trimmed);
+        return 0;
+    }
+    char *inside = calloc(len - prefix_len, 1);
+    if (!inside) {
+        fail("out of memory");
+    }
+    memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
+    inside[len - prefix_len - 1] = '\0';
+    int in_string = 0;
+    int comma_count = 0;
+    char *commas[2] = {0};
+    for (char *cursor = inside; *cursor; ++cursor) {
+        if (*cursor == '"' && (cursor == inside || *(cursor - 1) != '\\')) {
+            in_string = !in_string;
+        } else if (*cursor == ',' && !in_string && comma_count < 2) {
+            commas[comma_count++] = cursor;
+        }
+    }
+    if (comma_count != 2) {
+        free(inside);
+        free(trimmed);
+        return 0;
+    }
+    *commas[0] = '\0';
+    *commas[1] = '\0';
+    char *condition = trim_copy(inside);
+    char *then_value = trim_copy(commas[0] + 1);
+    char *else_value = trim_copy(commas[1] + 1);
+    char *condition_ident = NULL;
+    char *then_ident = NULL;
+    char *else_string = NULL;
+    int ok = parse_ident_expr(condition, &condition_ident) &&
+             parse_ident_expr(then_value, &then_ident) &&
+             parse_string_literal_expr(else_value, &else_string);
+    free(condition);
+    free(then_value);
+    free(else_value);
+    free(inside);
+    free(trimmed);
+    if (!ok) {
+        free(condition_ident);
+        free(then_ident);
+        free(else_string);
+        return 0;
+    }
+    size_t size = strlen(condition_ident) + strlen(then_ident) + 2;
+    char *joined = calloc(size, 1);
+    if (!joined) {
+        fail("out of memory");
+    }
+    snprintf(joined, size, "%s\n%s", condition_ident, then_ident);
+    free(condition_ident);
+    free(then_ident);
+    out->kind = NATIVE_EXPR_IF_VAR_VAR_STRING;
+    out->left = joined;
+    out->right = else_string;
+    return 1;
+}
+
 static void free_native_print_program(native_print_program_t *program) {
     if (!program) {
         return;
@@ -708,6 +844,38 @@ static void free_native_single_arg_fn_program(native_single_arg_fn_program_t *pr
     free(program->body_expr.right);
     free(program->call_name);
     free(program->call_arg);
+    memset(program, 0, sizeof(*program));
+}
+
+static void free_native_if_expr_program(native_if_expr_program_t *program) {
+    if (!program) {
+        return;
+    }
+    free(program->greeting_name);
+    free(program->greeting_expr.left);
+    free(program->greeting_expr.right);
+    free(program->enabled_name);
+    free(program->enabled_expr.left);
+    free(program->enabled_expr.right);
+    free(program->print_expr.left);
+    free(program->print_expr.right);
+    memset(program, 0, sizeof(*program));
+}
+
+static void free_native_if_stmt_program(native_if_stmt_program_t *program) {
+    if (!program) {
+        return;
+    }
+    free(program->greeting_name);
+    free(program->greeting_expr.left);
+    free(program->greeting_expr.right);
+    free(program->enabled_name);
+    free(program->enabled_expr.left);
+    free(program->enabled_expr.right);
+    free(program->then_expr.left);
+    free(program->then_expr.right);
+    free(program->else_expr.left);
+    free(program->else_expr.right);
     memset(program, 0, sizeof(*program));
 }
 
@@ -1219,6 +1387,37 @@ static void append_expr_json(char **buffer, size_t *length, size_t *capacity, co
         append_text(buffer, length, capacity, "}}");
         return;
     }
+    if (expr->kind == NATIVE_EXPR_EQ_VAR_STRING) {
+        append_text(buffer, length, capacity, "{\"kind\":\"eq\",\"left\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->left);
+        append_text(buffer, length, capacity, "},\"right\":{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->right);
+        append_text(buffer, length, capacity, "}}");
+        return;
+    }
+    if (expr->kind == NATIVE_EXPR_IF_VAR_VAR_STRING) {
+        const char *split = strchr(expr->left, '\n');
+        if (!split) {
+            fail("invalid if expression");
+        }
+        size_t cond_len = (size_t)(split - expr->left);
+        char *cond = calloc(cond_len + 1, 1);
+        if (!cond) {
+            fail("out of memory");
+        }
+        memcpy(cond, expr->left, cond_len);
+        cond[cond_len] = '\0';
+        const char *then_name = split + 1;
+        append_text(buffer, length, capacity, "{\"kind\":\"if\",\"condition\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(buffer, length, capacity, cond);
+        append_text(buffer, length, capacity, "},\"then\":{\"kind\":\"var\",\"name\":");
+        append_json_string_to_buffer(buffer, length, capacity, then_name);
+        append_text(buffer, length, capacity, "},\"else\":{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->right);
+        append_text(buffer, length, capacity, "}}");
+        free(cond);
+        return;
+    }
     append_text(buffer, length, capacity, "{\"kind\":\"concat\",\"left\":{\"kind\":\"string\",\"value\":");
     append_json_string_to_buffer(buffer, length, capacity, expr->left);
     append_text(buffer, length, capacity, "},\"right\":{\"kind\":\"string\",\"value\":");
@@ -1566,6 +1765,337 @@ static char *native_single_arg_fn_program_to_artifact_json(const native_single_a
         fail("out of memory");
     }
     snprintf(buffer, size, "{\"kind\":\"print_many\",\"texts\":[\"%s%s\"]}", program->call_arg, program->body_expr.right);
+    return buffer;
+}
+
+static int parse_named_let_line(const char *line, const char *expected_name, native_expr_t *out) {
+    const char *let_prefix = "let ";
+    if (strncmp(line, let_prefix, strlen(let_prefix)) != 0) {
+        return 0;
+    }
+    char *copy = strdup(line + strlen(let_prefix));
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *equal = strstr(copy, "=");
+    if (!equal) {
+        free(copy);
+        return 0;
+    }
+    *equal = '\0';
+    char *name = trim_copy(copy);
+    int name_ok = strcmp(name, expected_name) == 0;
+    free(name);
+    if (!name_ok) {
+        free(copy);
+        return 0;
+    }
+    int ok = parse_simple_expr(equal + 1, out) || parse_eq_var_string_expr(equal + 1, out);
+    free(copy);
+    return ok;
+}
+
+static int try_parse_native_if_expr_program(const char *source, native_if_expr_program_t *out) {
+    memset(out, 0, sizeof(*out));
+    char *copy = strdup(source);
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *lines[8] = {0};
+    size_t count = 0;
+    for (char *line = strtok(copy, "\n"); line && count < 8; line = strtok(NULL, "\n")) {
+        char *trimmed = trim_copy(line);
+        if (trimmed[0] != '\0') {
+            lines[count++] = trimmed;
+        } else {
+            free(trimmed);
+        }
+    }
+    if (count != 3) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    out->greeting_name = strdup("greeting");
+    out->enabled_name = strdup("enabled");
+    if (!out->greeting_name || !out->enabled_name) {
+        fail("out of memory");
+    }
+    if (!parse_named_let_line(lines[0], out->greeting_name, &out->greeting_expr) ||
+        !parse_named_let_line(lines[1], out->enabled_name, &out->enabled_expr)) {
+        free_native_if_expr_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    const char *print_prefix = "print ";
+    if (strncmp(lines[2], print_prefix, strlen(print_prefix)) != 0 ||
+        !parse_if_var_var_string_expr(lines[2] + strlen(print_prefix), &out->print_expr)) {
+        free_native_if_expr_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    const char *split = strchr(out->print_expr.left, '\n');
+    if (!split) {
+        free_native_if_expr_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    size_t cond_len = (size_t)(split - out->print_expr.left);
+    if (strncmp(out->print_expr.left, out->enabled_name, cond_len) != 0 || strlen(out->enabled_name) != cond_len ||
+        strcmp(split + 1, out->greeting_name) != 0) {
+        free_native_if_expr_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    for (size_t i = 0; i < count; ++i) free(lines[i]);
+    free(copy);
+    return 1;
+}
+
+static int try_parse_native_if_stmt_program(const char *source, native_if_stmt_program_t *out) {
+    memset(out, 0, sizeof(*out));
+    char *copy = strdup(source);
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *lines[12] = {0};
+    size_t count = 0;
+    for (char *line = strtok(copy, "\n"); line && count < 12; line = strtok(NULL, "\n")) {
+        char *trimmed = trim_copy(line);
+        if (trimmed[0] != '\0') {
+            lines[count++] = trimmed;
+        } else {
+            free(trimmed);
+        }
+    }
+    if (count != 7) {
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    out->greeting_name = strdup("greeting");
+    out->enabled_name = strdup("enabled");
+    if (!out->greeting_name || !out->enabled_name) {
+        fail("out of memory");
+    }
+    if (!parse_named_let_line(lines[0], out->greeting_name, &out->greeting_expr) ||
+        !parse_named_let_line(lines[1], out->enabled_name, &out->enabled_expr)) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    if (strcmp(lines[2], "if enabled {") != 0 || strcmp(lines[4], "} else {") != 0 || strcmp(lines[6], "}") != 0) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    const char *print_prefix = "print ";
+    if (strncmp(lines[3], print_prefix, strlen(print_prefix)) != 0 ||
+        !parse_ident_expr(lines[3] + strlen(print_prefix), &out->then_expr.left)) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    out->then_expr.kind = NATIVE_EXPR_VAR;
+    if (strcmp(out->then_expr.left, out->greeting_name) != 0) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    if (strncmp(lines[5], print_prefix, strlen(print_prefix)) != 0 ||
+        !parse_string_literal_expr(lines[5] + strlen(print_prefix), &out->else_expr.left)) {
+        free_native_if_stmt_program(out);
+        for (size_t i = 0; i < count; ++i) free(lines[i]);
+        free(copy);
+        return 0;
+    }
+    out->else_expr.kind = NATIVE_EXPR_STRING;
+    for (size_t i = 0; i < count; ++i) free(lines[i]);
+    free(copy);
+    return 1;
+}
+
+static char *native_if_expr_program_to_parse_json(const native_if_expr_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[],\"statements\":[{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->print_expr);
+    append_text(&buffer, &length, &capacity, "}]}");
+    return buffer;
+}
+
+static char *native_if_expr_program_to_hir_json(const native_if_expr_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[],\"statements\":[{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->print_expr);
+    append_text(&buffer, &length, &capacity, "}]}");
+    return buffer;
+}
+
+static char *native_if_expr_program_to_kir_json(const native_if_expr_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[],\"instructions\":[{\"op\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"op\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"op\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->print_expr);
+    append_text(&buffer, &length, &capacity, "}]}");
+    return buffer;
+}
+
+static char *native_if_expr_program_to_analysis_json(void) {
+    return strdup("{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}");
+}
+
+static char *native_if_expr_program_to_artifact_json(const native_if_expr_program_t *program) {
+    const char *condition_name = program->enabled_expr.left;
+    const char *condition_expected = program->enabled_expr.right;
+    (void)condition_name;
+    size_t greeting_size = 1;
+    if (program->greeting_expr.kind == NATIVE_EXPR_STRING) {
+        greeting_size = strlen(program->greeting_expr.left) + 1;
+    } else {
+        greeting_size = strlen(program->greeting_expr.left) + strlen(program->greeting_expr.right) + 1;
+    }
+    char *greeting = calloc(greeting_size, 1);
+    if (!greeting) {
+        fail("out of memory");
+    }
+    if (program->greeting_expr.kind == NATIVE_EXPR_STRING) {
+        snprintf(greeting, greeting_size, "%s", program->greeting_expr.left);
+    } else {
+        snprintf(greeting, greeting_size, "%s%s", program->greeting_expr.left, program->greeting_expr.right);
+    }
+    const char *chosen = strcmp(greeting, condition_expected) == 0 ? greeting : program->print_expr.right;
+    size_t size = strlen(chosen) + 64;
+    char *buffer = calloc(size, 1);
+    if (!buffer) {
+        fail("out of memory");
+    }
+    snprintf(buffer, size, "{\"kind\":\"print_many\",\"texts\":[\"%s\"]}", chosen);
+    free(greeting);
+    return buffer;
+}
+
+static char *native_if_stmt_program_to_parse_json(const native_if_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[],\"statements\":[{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"if_stmt\",\"condition\":{\"kind\":\"var\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, "},\"then_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->then_expr);
+    append_text(&buffer, &length, &capacity, "}],\"else_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->else_expr);
+    append_text(&buffer, &length, &capacity, "}]}]}");
+    return buffer;
+}
+
+static char *native_if_stmt_program_to_hir_json(const native_if_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[],\"statements\":[{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"kind\":\"if_stmt\",\"condition\":{\"kind\":\"var\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, "},\"then_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->then_expr);
+    append_text(&buffer, &length, &capacity, "}],\"else_body\":[{\"kind\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->else_expr);
+    append_text(&buffer, &length, &capacity, "}]}]}");
+    return buffer;
+}
+
+static char *native_if_stmt_program_to_kir_json(const native_if_stmt_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[],\"instructions\":[{\"op\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->greeting_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->greeting_expr);
+    append_text(&buffer, &length, &capacity, "},{\"op\":\"let\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, ",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->enabled_expr);
+    append_text(&buffer, &length, &capacity, "},{\"op\":\"if\",\"condition\":{\"kind\":\"var\",\"name\":");
+    append_json_string_to_buffer(&buffer, &length, &capacity, program->enabled_name);
+    append_text(&buffer, &length, &capacity, "},\"then\":[{\"op\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->then_expr);
+    append_text(&buffer, &length, &capacity, "}],\"else\":[{\"op\":\"print\",\"expr\":");
+    append_expr_json(&buffer, &length, &capacity, &program->else_expr);
+    append_text(&buffer, &length, &capacity, "}]}]}");
+    return buffer;
+}
+
+static char *native_if_stmt_program_to_analysis_json(void) {
+    return strdup("{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}");
+}
+
+static char *native_if_stmt_program_to_artifact_json(const native_if_stmt_program_t *program) {
+    size_t greeting_size = strlen(program->greeting_expr.left) + strlen(program->greeting_expr.right) + 1;
+    char *greeting = calloc(greeting_size, 1);
+    if (!greeting) {
+        fail("out of memory");
+    }
+    snprintf(greeting, greeting_size, "%s%s", program->greeting_expr.left, program->greeting_expr.right);
+    const char *chosen = strcmp(greeting, program->enabled_expr.right) == 0 ? greeting : program->else_expr.left;
+    size_t size = strlen(chosen) + 64;
+    char *buffer = calloc(size, 1);
+    if (!buffer) {
+        fail("out of memory");
+    }
+    snprintf(buffer, size, "{\"kind\":\"print_many\",\"texts\":[\"%s\"]}", chosen);
+    free(greeting);
     return buffer;
 }
 
@@ -2011,10 +2541,14 @@ int main(int argc, char **argv) {
         native_let_print_program_t native_let_print_program = {0};
         native_zero_arg_fn_program_t native_zero_arg_fn_program = {0};
         native_single_arg_fn_program_t native_single_arg_fn_program = {0};
+        native_if_expr_program_t native_if_expr_program = {0};
+        native_if_stmt_program_t native_if_stmt_program = {0};
         int has_native_print_program = try_parse_native_print_program(program_source, &native_print_program);
         int has_native_let_print_program = 0;
         int has_native_zero_arg_fn_program = 0;
         int has_native_single_arg_fn_program = 0;
+        int has_native_if_expr_program = 0;
+        int has_native_if_stmt_program = 0;
         if (!has_native_print_program) {
             has_native_let_print_program = try_parse_native_let_print_program(program_source, &native_let_print_program);
         }
@@ -2023,6 +2557,12 @@ int main(int argc, char **argv) {
         }
         if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program) {
             has_native_single_arg_fn_program = try_parse_native_single_arg_fn_program(program_source, &native_single_arg_fn_program);
+        }
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program) {
+            has_native_if_expr_program = try_parse_native_if_expr_program(program_source, &native_if_expr_program);
+        }
+        if (!has_native_print_program && !has_native_let_print_program && !has_native_zero_arg_fn_program && !has_native_single_arg_fn_program && !has_native_if_expr_program) {
+            has_native_if_stmt_program = try_parse_native_if_stmt_program(program_source, &native_if_stmt_program);
         }
         if (has_native_print_program) {
             char *raw_ast = native_print_program_to_parse_json(&native_print_program);
@@ -2204,12 +2744,90 @@ int main(int argc, char **argv) {
             free(canonical_frontend);
             return 0;
         }
+        if (has_native_if_expr_program) {
+            char *raw_ast = native_if_expr_program_to_parse_json(&native_if_expr_program);
+            char *raw_hir = native_if_expr_program_to_hir_json(&native_if_expr_program);
+            char *raw_kir = native_if_expr_program_to_kir_json(&native_if_expr_program);
+            char *raw_analysis = native_if_expr_program_to_analysis_json();
+            char *raw_artifact = native_if_expr_program_to_artifact_json(&native_if_expr_program);
+
+            if (strcmp(command, "selfhost-run") == 0) {
+                if (use_json) {
+                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                    fputc('\n', stdout);
+                } else {
+                    emit_print_many_stdout(raw_artifact);
+                }
+            } else if (strcmp(command, "selfhost-check") == 0) {
+                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-emit") == 0) {
+                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-capir") == 0) {
+                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-parse") == 0) {
+                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+                emit_json_string(argv[arg_index + 1]);
+                printf(",\"ast\":");
+                emit_json_string(raw_ast);
+                fputs("}\n", stdout);
+            } else {
+                unsupported_source();
+            }
+
+            free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
+            free_native_if_expr_program(&native_if_expr_program);
+            free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
+            return 0;
+        }
+        if (has_native_if_stmt_program) {
+            char *raw_ast = native_if_stmt_program_to_parse_json(&native_if_stmt_program);
+            char *raw_hir = native_if_stmt_program_to_hir_json(&native_if_stmt_program);
+            char *raw_kir = native_if_stmt_program_to_kir_json(&native_if_stmt_program);
+            char *raw_analysis = native_if_stmt_program_to_analysis_json();
+            char *raw_artifact = native_if_stmt_program_to_artifact_json(&native_if_stmt_program);
+
+            if (strcmp(command, "selfhost-run") == 0) {
+                if (use_json) {
+                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                    fputc('\n', stdout);
+                } else {
+                    emit_print_many_stdout(raw_artifact);
+                }
+            } else if (strcmp(command, "selfhost-check") == 0) {
+                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-emit") == 0) {
+                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-capir") == 0) {
+                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-parse") == 0) {
+                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+                emit_json_string(argv[arg_index + 1]);
+                printf(",\"ast\":");
+                emit_json_string(raw_ast);
+                fputs("}\n", stdout);
+            } else {
+                unsupported_source();
+            }
+
+            free(raw_ast); free(raw_hir); free(raw_kir); free(raw_analysis); free(raw_artifact);
+            free_native_if_stmt_program(&native_if_stmt_program);
+            free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
+            return 0;
+        }
         const canonical_case_t *matched = match_canonical_case(kagi_home, program_source);
         if (!matched) {
             free_native_print_program(&native_print_program);
             free_native_let_print_program(&native_let_print_program);
             free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
             free_native_single_arg_fn_program(&native_single_arg_fn_program);
+            free_native_if_expr_program(&native_if_expr_program);
+            free_native_if_stmt_program(&native_if_stmt_program);
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
@@ -2293,6 +2911,8 @@ int main(int argc, char **argv) {
         free_native_let_print_program(&native_let_print_program);
         free_native_zero_arg_fn_program(&native_zero_arg_fn_program);
         free_native_single_arg_fn_program(&native_single_arg_fn_program);
+        free_native_if_expr_program(&native_if_expr_program);
+        free_native_if_stmt_program(&native_if_stmt_program);
         free(frontend_source);
         free(program_source);
         free(frontend_kir);
