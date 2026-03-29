@@ -17,6 +17,8 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.runtime_manifest = cls.root / "portable" / "launcher" / "kagi_runtime.env"
         cls.native_runtime_source = cls.root / "portable" / "runtime" / "kagi_native_runtime.c"
         cls.native_runtime_build_script = cls.root / "portable" / "runtime" / "build.sh"
+        cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
+        cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
         self.assertTrue(self.launcher_source.exists())
@@ -65,6 +67,15 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('failed to exec native bridge python', source)
         self.assertIn('bin/python3', source)
         self.assertIn('"-m"', source)
+
+    def test_native_image_source_exists(self):
+        source = self.native_image_source.read_text(encoding="utf-8")
+        self.assertIn('selfhost-bootstrap', source)
+        self.assertIn('selfhost-build', source)
+        self.assertIn('selfhost-freeze', source)
+        self.assertIn('selfhost-run', source)
+        self.assertIn('selfhost_bundles', source)
+        self.assertIn('canonical-seed-kir', source)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +187,77 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertIn("entry=selfhost.bootstrap", completed.stdout)
             self.assertIn(f"home={dist / 'workspace'}", completed.stdout)
             self.assertIn("args=--json hello.ks", completed.stdout)
+
+    def test_built_launcher_can_execute_canonical_native_image_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            (dist / "app" / "kagi_runtime.env").write_text(
+                "RUNTIME_KIND=native\n"
+                "RUNTIME_BIN_REL=bin/kagi-native-runtime\n"
+                "ENTRY_STYLE=direct\n"
+                "ENTRY_TARGET=kagi.host_entry\n"
+                "IMAGE_REL=app/kagi-canonical-image\n"
+                "WORKSPACE_REL=workspace\n",
+                encoding="utf-8",
+            )
+
+            bootstrap = subprocess.run(
+                [str(launcher_bin), "selfhost-bootstrap", "--json", str(self.root / "examples" / "selfhost_frontend.ks")],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(bootstrap.returncode, 0, bootstrap.stderr)
+            payload = __import__("json").loads(bootstrap.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", str(self.root / "examples" / "selfhost_frontend.ks"), str(self.root / "examples" / "hello_arg_fn.ksrc")],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(run.stdout, "hello, world!\n")
 
 
 if __name__ == "__main__":
