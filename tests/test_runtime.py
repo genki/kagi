@@ -461,7 +461,7 @@ class RuntimeTest(unittest.TestCase):
             result = execute_kir_program_v0(program)
         self.assertEqual(result.output, "hello\nworld")
 
-    def test_execute_kir_program_v0_richer_program_still_uses_generic_fallback(self):
+    def test_execute_kir_program_v0_closed_richer_program_uses_local_fast_path(self):
         program = KIRProgramV0(
             instructions=[
                 KIRLetV0(name="greeting", expr=KIRStringV0(value="hello")),
@@ -472,11 +472,11 @@ class RuntimeTest(unittest.TestCase):
         with patch.object(
             kir_runtime_module,
             "_execute_generic_kir_program_v0",
-            wraps=kir_runtime_module._execute_generic_kir_program_v0,
+            side_effect=AssertionError("closed richer program should not use generic kir executor"),
         ) as generic_spy:
             result = execute_kir_program_v0(program)
         self.assertEqual(result.output, "hello")
-        self.assertEqual(generic_spy.call_count, 1)
+        self.assertEqual(generic_spy.call_count, 0)
 
     def test_execute_kir_program_helper_does_not_call_python_kir_runtime_for_closed_let_print_program(self):
         program = KIRProgramV0(
@@ -505,6 +505,30 @@ class RuntimeTest(unittest.TestCase):
         with patch("kagi.kir_runtime.execute_kir_program_v0", side_effect=AssertionError("closed KIR helper should not use python kir runtime")):
             actual = execute_kir_program_result(program).output
         self.assertEqual(actual, "hello, world!")
+
+    def test_execute_kir_program_v0_builtin_free_function_program_does_not_use_generic_fallback(self):
+        program = KIRProgramV0(
+            instructions=[
+                KIRCallV0(name="emit", args=[KIRStringV0(value="hello, world!")]),
+            ],
+            functions=[
+                KIRFunctionV0(
+                    name="emit",
+                    params=["text"],
+                    body=[
+                        KIRPrintV0(expr=KIRVarV0(name="text")),
+                        KIRReturnV0(expr=KIRVarV0(name="text")),
+                    ],
+                )
+            ],
+        )
+        with patch.object(
+            kir_runtime_module,
+            "_execute_generic_kir_program_v0",
+            side_effect=AssertionError("builtin-free function program should not use generic kir executor"),
+        ):
+            result = execute_kir_program_v0(program)
+        self.assertEqual(result.output, "hello, world!")
 
     def test_subset_builtins_program_ast_matches_current_shape(self):
         source = """

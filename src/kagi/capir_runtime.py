@@ -232,6 +232,10 @@ def _try_execute_kir_program_locally_v0(program: KIRProgramV0, *, builtins=None)
     return None
 
 
+def try_execute_kir_program_fast_v0(program: KIRProgramV0, *, builtins=None):
+    return _try_execute_kir_program_locally_v0(program, builtins=builtins)
+
+
 def execute_kir_entry_fast_v0(
     program: KIRProgramV0,
     entry: str,

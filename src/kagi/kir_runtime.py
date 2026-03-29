@@ -55,6 +55,11 @@ def execute_kir_program_v0(
     fast_path = _try_execute_print_only_program_v0(program)
     if fast_path is not None:
         return fast_path
+    from .capir_runtime import try_execute_kir_program_fast_v0
+
+    local_fast_path = try_execute_kir_program_fast_v0(program, builtins=builtins)
+    if local_fast_path is not None:
+        return KIRExecutionResultV0(output=local_fast_path.output)
     return _execute_generic_kir_program_v0(program, builtins=builtins)
 
 
