@@ -12,6 +12,22 @@ typedef struct {
     const char *bundle_name;
 } canonical_case_t;
 
+typedef enum {
+    NATIVE_EXPR_STRING,
+    NATIVE_EXPR_CONCAT,
+} native_expr_kind_t;
+
+typedef struct {
+    native_expr_kind_t kind;
+    char *left;
+    char *right;
+} native_expr_t;
+
+typedef struct {
+    native_expr_t *prints;
+    size_t count;
+} native_print_program_t;
+
 static const canonical_case_t CANONICAL_CASES[] = {
     {"hello", "hello.ksrc", "hello.pipeline.json"},
     {"hello_arg_fn", "hello_arg_fn.ksrc", "hello_arg_fn.pipeline.json"},
@@ -232,6 +248,34 @@ static void append_text(char **buffer, size_t *length, size_t *capacity, const c
 static void append_char(char **buffer, size_t *length, size_t *capacity, char ch) {
     char tmp[2] = {ch, '\0'};
     append_text(buffer, length, capacity, tmp);
+}
+
+static void append_json_string_to_buffer(char **buffer, size_t *length, size_t *capacity, const char *text) {
+    append_char(buffer, length, capacity, '"');
+    for (const char *cursor = text; *cursor; ++cursor) {
+        unsigned char ch = (unsigned char)*cursor;
+        switch (ch) {
+            case '\\':
+                append_text(buffer, length, capacity, "\\\\");
+                break;
+            case '"':
+                append_text(buffer, length, capacity, "\\\"");
+                break;
+            case '\n':
+                append_text(buffer, length, capacity, "\\n");
+                break;
+            case '\r':
+                append_text(buffer, length, capacity, "\\r");
+                break;
+            case '\t':
+                append_text(buffer, length, capacity, "\\t");
+                break;
+            default:
+                append_char(buffer, length, capacity, (char)ch);
+                break;
+        }
+    }
+    append_char(buffer, length, capacity, '"');
 }
 
 static int is_ident_start_char(unsigned char ch) {
@@ -460,6 +504,248 @@ static int fingerprint_source_equals_file(const char *text, const char *path) {
     free(right);
     free(file_text);
     return equal;
+}
+
+static char *trim_copy(const char *text) {
+    while (*text && is_space_outside_string((unsigned char)*text)) {
+        text++;
+    }
+    size_t len = strlen(text);
+    while (len > 0 && is_space_outside_string((unsigned char)text[len - 1])) {
+        len--;
+    }
+    char *out = calloc(len + 1, 1);
+    if (!out) {
+        fail("out of memory");
+    }
+    memcpy(out, text, len);
+    out[len] = '\0';
+    return out;
+}
+
+static int parse_string_literal_expr(const char *text, char **out) {
+    size_t len = strlen(text);
+    if (len < 2 || text[0] != '"' || text[len - 1] != '"') {
+        return 0;
+    }
+    char *value = calloc(len - 1, 1);
+    if (!value) {
+        fail("out of memory");
+    }
+    size_t j = 0;
+    for (size_t i = 1; i + 1 < len; ++i) {
+        if (text[i] == '\\' && i + 2 < len) {
+            i++;
+        }
+        value[j++] = text[i];
+    }
+    value[j] = '\0';
+    *out = value;
+    return 1;
+}
+
+static int parse_print_expr(const char *text, native_expr_t *out) {
+    char *trimmed = trim_copy(text);
+    char *string_value = NULL;
+    if (parse_string_literal_expr(trimmed, &string_value)) {
+        out->kind = NATIVE_EXPR_STRING;
+        out->left = string_value;
+        out->right = NULL;
+        free(trimmed);
+        return 1;
+    }
+    const char *prefix = "concat(";
+    size_t prefix_len = strlen(prefix);
+    size_t len = strlen(trimmed);
+    if (len > prefix_len + 1 && strncmp(trimmed, prefix, prefix_len) == 0 && trimmed[len - 1] == ')') {
+        char *inside = calloc(len - prefix_len, 1);
+        if (!inside) {
+            fail("out of memory");
+        }
+        memcpy(inside, trimmed + prefix_len, len - prefix_len - 1);
+        inside[len - prefix_len - 1] = '\0';
+        int in_string = 0;
+        char *comma = NULL;
+        for (char *cursor = inside; *cursor; ++cursor) {
+            if (*cursor == '"' && (cursor == inside || *(cursor - 1) != '\\')) {
+                in_string = !in_string;
+            } else if (*cursor == ',' && !in_string) {
+                comma = cursor;
+                break;
+            }
+        }
+        if (comma) {
+            *comma = '\0';
+            char *left = trim_copy(inside);
+            char *right = trim_copy(comma + 1);
+            char *left_value = NULL;
+            char *right_value = NULL;
+            if (parse_string_literal_expr(left, &left_value) && parse_string_literal_expr(right, &right_value)) {
+                out->kind = NATIVE_EXPR_CONCAT;
+                out->left = left_value;
+                out->right = right_value;
+                free(left);
+                free(right);
+                free(inside);
+                free(trimmed);
+                return 1;
+            }
+            free(left);
+            free(right);
+            free(left_value);
+            free(right_value);
+        }
+        free(inside);
+    }
+    free(trimmed);
+    return 0;
+}
+
+static void free_native_print_program(native_print_program_t *program) {
+    if (!program) {
+        return;
+    }
+    for (size_t i = 0; i < program->count; ++i) {
+        free(program->prints[i].left);
+        free(program->prints[i].right);
+    }
+    free(program->prints);
+    program->prints = NULL;
+    program->count = 0;
+}
+
+static int try_parse_native_print_program(const char *source, native_print_program_t *out) {
+    memset(out, 0, sizeof(*out));
+    char *copy = strdup(source);
+    if (!copy) {
+        fail("out of memory");
+    }
+    char *line = strtok(copy, "\n");
+    while (line) {
+        char *trimmed = trim_copy(line);
+        if (trimmed[0] != '\0') {
+            const char *prefix = "print ";
+            if (strncmp(trimmed, prefix, strlen(prefix)) != 0) {
+                free(trimmed);
+                free(copy);
+                free_native_print_program(out);
+                return 0;
+            }
+            native_expr_t expr = {0};
+            if (!parse_print_expr(trimmed + strlen(prefix), &expr)) {
+                free(trimmed);
+                free(copy);
+                free_native_print_program(out);
+                return 0;
+            }
+            native_expr_t *next = realloc(out->prints, (out->count + 1) * sizeof(native_expr_t));
+            if (!next) {
+                fail("out of memory");
+            }
+            out->prints = next;
+            out->prints[out->count++] = expr;
+        }
+        free(trimmed);
+        line = strtok(NULL, "\n");
+    }
+    free(copy);
+    return out->count > 0;
+}
+
+static void append_expr_json(char **buffer, size_t *length, size_t *capacity, const native_expr_t *expr) {
+    if (expr->kind == NATIVE_EXPR_STRING) {
+        append_text(buffer, length, capacity, "{\"kind\":\"string\",\"value\":");
+        append_json_string_to_buffer(buffer, length, capacity, expr->left);
+        append_char(buffer, length, capacity, '}');
+        return;
+    }
+    append_text(buffer, length, capacity, "{\"kind\":\"concat\",\"left\":{\"kind\":\"string\",\"value\":");
+    append_json_string_to_buffer(buffer, length, capacity, expr->left);
+    append_text(buffer, length, capacity, "},\"right\":{\"kind\":\"string\",\"value\":");
+    append_json_string_to_buffer(buffer, length, capacity, expr->right);
+    append_text(buffer, length, capacity, "}}");
+}
+
+static char *native_print_program_to_parse_json(const native_print_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"program\",\"functions\":[],\"statements\":[");
+    for (size_t i = 0; i < program->count; ++i) {
+        if (i > 0) {
+            append_char(&buffer, &length, &capacity, ',');
+        }
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->prints[i]);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_print_program_to_hir_json(const native_print_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"hir_program\",\"functions\":[],\"statements\":[");
+    for (size_t i = 0; i < program->count; ++i) {
+        if (i > 0) {
+            append_char(&buffer, &length, &capacity, ',');
+        }
+        append_text(&buffer, &length, &capacity, "{\"kind\":\"print\",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->prints[i]);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_print_program_to_kir_json(const native_print_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"kir\",\"functions\":[],\"instructions\":[");
+    for (size_t i = 0; i < program->count; ++i) {
+        if (i > 0) {
+            append_char(&buffer, &length, &capacity, ',');
+        }
+        append_text(&buffer, &length, &capacity, "{\"op\":\"print\",\"expr\":");
+        append_expr_json(&buffer, &length, &capacity, &program->prints[i]);
+        append_char(&buffer, &length, &capacity, '}');
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
+}
+
+static char *native_print_program_to_analysis_json(void) {
+    return strdup("{\"kind\":\"analysis_v1\",\"function_arities\":{},\"effects\":{\"program\":[\"print\"],\"functions\":{}}}");
+}
+
+static char *native_print_program_to_artifact_json(const native_print_program_t *program) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    append_text(&buffer, &length, &capacity, "{\"kind\":\"print_many\",\"texts\":[");
+    for (size_t i = 0; i < program->count; ++i) {
+        if (i > 0) {
+            append_char(&buffer, &length, &capacity, ',');
+        }
+        char *value = NULL;
+        if (program->prints[i].kind == NATIVE_EXPR_STRING) {
+            value = strdup(program->prints[i].left);
+        } else {
+            size_t size = strlen(program->prints[i].left) + strlen(program->prints[i].right) + 1;
+            value = calloc(size, 1);
+            if (!value) {
+                fail("out of memory");
+            }
+            snprintf(value, size, "%s%s", program->prints[i].left, program->prints[i].right);
+        }
+        append_json_string_to_buffer(&buffer, &length, &capacity, value);
+        free(value);
+    }
+    append_text(&buffer, &length, &capacity, "]}");
+    return buffer;
 }
 
 static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
@@ -900,8 +1186,56 @@ int main(int argc, char **argv) {
             unsupported_source();
             return 1;
         }
+        native_print_program_t native_print_program = {0};
+        int has_native_print_program = try_parse_native_print_program(program_source, &native_print_program);
+        if (has_native_print_program) {
+            char *raw_ast = native_print_program_to_parse_json(&native_print_program);
+            char *raw_hir = native_print_program_to_hir_json(&native_print_program);
+            char *raw_kir = native_print_program_to_kir_json(&native_print_program);
+            char *raw_analysis = native_print_program_to_analysis_json();
+            char *raw_artifact = native_print_program_to_artifact_json(&native_print_program);
+
+            if (strcmp(command, "selfhost-run") == 0) {
+                if (use_json) {
+                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                    fputc('\n', stdout);
+                } else {
+                    emit_print_many_stdout(raw_artifact);
+                }
+            } else if (strcmp(command, "selfhost-check") == 0) {
+                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-emit") == 0) {
+                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-capir") == 0) {
+                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
+                fputc('\n', stdout);
+            } else if (strcmp(command, "selfhost-parse") == 0) {
+                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+                emit_json_string(argv[arg_index + 1]);
+                printf(",\"ast\":");
+                emit_json_string(raw_ast);
+                fputs("}\n", stdout);
+            } else {
+                unsupported_source();
+            }
+
+            free(raw_ast);
+            free(raw_hir);
+            free(raw_kir);
+            free(raw_analysis);
+            free(raw_artifact);
+            free_native_print_program(&native_print_program);
+            free(frontend_source);
+            free(program_source);
+            free(frontend_kir);
+            free(canonical_frontend);
+            return 0;
+        }
         const canonical_case_t *matched = match_canonical_case(kagi_home, program_source);
         if (!matched) {
+            free_native_print_program(&native_print_program);
             free(frontend_source);
             free(program_source);
             free(frontend_kir);
@@ -981,6 +1315,7 @@ int main(int argc, char **argv) {
         free(raw_analysis);
         free(raw_artifact);
         free(bundle_json);
+        free_native_print_program(&native_print_program);
         free(frontend_source);
         free(program_source);
         free(frontend_kir);
