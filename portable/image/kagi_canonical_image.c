@@ -22,55 +22,6 @@ typedef struct {
     char *right;
 } native_expr_t;
 
-typedef struct {
-    native_expr_t *prints;
-    size_t count;
-} native_print_program_t;
-
-typedef struct {
-    char *name;
-    native_expr_t expr;
-    char *print_name;
-} native_let_print_program_t;
-
-typedef enum {
-    NATIVE_FN_BODY_PRINT_ONLY,
-    NATIVE_FN_BODY_LET_PRINT,
-} native_fn_body_kind_t;
-
-typedef struct {
-    char *fn_name;
-    native_fn_body_kind_t body_kind;
-    native_print_program_t print_body;
-    native_let_print_program_t let_print_body;
-    char *call_name;
-} native_zero_arg_fn_program_t;
-
-typedef struct {
-    char *fn_name;
-    char *param_name;
-    native_expr_t body_expr;
-    char *call_name;
-    char *call_arg;
-} native_single_arg_fn_program_t;
-
-typedef struct {
-    char *greeting_name;
-    native_expr_t greeting_expr;
-    char *enabled_name;
-    native_expr_t enabled_expr;
-    native_expr_t print_expr;
-} native_if_expr_program_t;
-
-typedef struct {
-    char *greeting_name;
-    native_expr_t greeting_expr;
-    char *enabled_name;
-    native_expr_t enabled_expr;
-    native_expr_t then_expr;
-    native_expr_t else_expr;
-} native_if_stmt_program_t;
-
 typedef enum {
     NATIVE_STMT_LET,
     NATIVE_STMT_PRINT,
@@ -1567,6 +1518,34 @@ static int is_json_flag(const char *arg) {
     return strcmp(arg, "--json") == 0;
 }
 
+static int frontend_matches_canonical(
+    const char *frontend_source,
+    const char *canonical_frontend,
+    const char *frontend_kir
+) {
+    return frontend_source &&
+           (normalized_source_equals(frontend_source, canonical_frontend) ||
+            strcmp(frontend_source, frontend_kir) == 0);
+}
+
+static int frontend_matches_canonical_or_kir(
+    const char *frontend_source,
+    const char *frontend_kir,
+    const char *frontend_src_path,
+    char **canonical_frontend
+) {
+    if (!frontend_source) {
+        return 0;
+    }
+    if (strcmp(frontend_source, frontend_kir) == 0) {
+        return 1;
+    }
+    if (!*canonical_frontend) {
+        *canonical_frontend = read_text_file(frontend_src_path);
+    }
+    return frontend_matches_canonical(frontend_source, *canonical_frontend, frontend_kir);
+}
+
 static char *extract_compile_texts_json(const char *bundle_json) {
     const char *needles[] = {
         "\"kind\":\"print_many\",\"texts\":[",
@@ -1863,6 +1842,51 @@ static void unsupported_source(void) {
     printf("{\"ok\":false,\"diagnostic\":{\"phase\":\"selfhost\",\"code\":\"selfhost_error\",\"message\":\"error: unsupported source\",\"line\":null,\"column\":null,\"snippet\":null}}\n");
 }
 
+static int emit_native_selfhost_command(
+    const char *command,
+    int use_json,
+    const char *source_path,
+    const char *raw_ast,
+    const char *raw_hir,
+    const char *raw_kir,
+    const char *raw_analysis,
+    const char *raw_artifact
+) {
+    if (strcmp(command, "selfhost-run") == 0) {
+        if (use_json) {
+            emit_selfhost_run_payload(source_path, raw_ast, raw_hir, raw_kir, raw_artifact);
+            fputc('\n', stdout);
+        } else {
+            emit_print_many_stdout(raw_artifact);
+        }
+        return 1;
+    }
+    if (strcmp(command, "selfhost-check") == 0) {
+        emit_selfhost_check_payload(source_path, use_json, raw_ast, raw_hir, raw_analysis);
+        fputc('\n', stdout);
+        return 1;
+    }
+    if (strcmp(command, "selfhost-emit") == 0) {
+        emit_selfhost_emit_payload(source_path, raw_ast, raw_hir, raw_artifact);
+        fputc('\n', stdout);
+        return 1;
+    }
+    if (strcmp(command, "selfhost-capir") == 0) {
+        emit_selfhost_capir_payload(source_path, raw_ast, raw_hir, raw_kir, raw_artifact);
+        fputc('\n', stdout);
+        return 1;
+    }
+    if (strcmp(command, "selfhost-parse") == 0) {
+        printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
+        emit_json_string(source_path);
+        printf(",\"ast\":");
+        emit_json_string(raw_ast);
+        fputs("}\n", stdout);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         fail("usage: kagi-canonical-image <entry-target> <command> ...");
@@ -1883,9 +1907,9 @@ int main(int argc, char **argv) {
     join_path(frontend_src_path, sizeof(frontend_src_path), examples_dir, "selfhost_frontend.ks");
 
     char *frontend_kir = read_text_file(frontend_kir_path);
-    char *canonical_frontend = read_text_file(frontend_src_path);
-    if (!frontend_kir || !canonical_frontend) {
-        fail("missing canonical frontend assets");
+    char *canonical_frontend = NULL;
+    if (!frontend_kir) {
+        fail("missing canonical frontend KIR");
     }
 
     if (strcmp(command, "selfhost-bootstrap") == 0 || strcmp(command, "selfhost-build") == 0 || strcmp(command, "selfhost-freeze") == 0) {
@@ -1904,10 +1928,7 @@ int main(int argc, char **argv) {
             fail("missing frontend path");
         }
         char *frontend_source = read_text_file(frontend_arg);
-        if (
-            !frontend_source ||
-            (!normalized_source_equals(frontend_source, canonical_frontend) && strcmp(frontend_source, frontend_kir) != 0)
-        ) {
+        if (!frontend_matches_canonical_or_kir(frontend_source, frontend_kir, frontend_src_path, &canonical_frontend)) {
             free(frontend_source);
             free(frontend_kir);
             free(canonical_frontend);
@@ -1961,9 +1982,8 @@ int main(int argc, char **argv) {
         char *frontend_source = read_text_file(argv[arg_index]);
         char *program_source = read_text_file(argv[arg_index + 1]);
         if (
-            !frontend_source ||
             !program_source ||
-            (!normalized_source_equals(frontend_source, canonical_frontend) && strcmp(frontend_source, frontend_kir) != 0)
+            !frontend_matches_canonical_or_kir(frontend_source, frontend_kir, frontend_src_path, &canonical_frontend)
         ) {
             free(frontend_source);
             free(program_source);
@@ -1992,30 +2012,9 @@ int main(int argc, char **argv) {
                 unsupported_source();
                 return 1;
             }
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
+            if (!emit_native_selfhost_command(
+                command, use_json, argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_analysis, raw_artifact
+            )) {
                 unsupported_source();
             }
 
@@ -2037,30 +2036,9 @@ int main(int argc, char **argv) {
                 unsupported_source();
                 return 1;
             }
-
-            if (strcmp(command, "selfhost-run") == 0) {
-                if (use_json) {
-                    emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                    fputc('\n', stdout);
-                } else {
-                    emit_print_many_stdout(raw_artifact);
-                }
-            } else if (strcmp(command, "selfhost-check") == 0) {
-                emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-emit") == 0) {
-                emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-capir") == 0) {
-                emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else if (strcmp(command, "selfhost-parse") == 0) {
-                printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-                emit_json_string(argv[arg_index + 1]);
-                printf(",\"ast\":");
-                emit_json_string(raw_ast);
-                fputs("}\n", stdout);
-            } else {
+            if (!emit_native_selfhost_command(
+                command, use_json, argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_analysis, raw_artifact
+            )) {
                 unsupported_source();
             }
 

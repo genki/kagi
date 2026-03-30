@@ -2051,6 +2051,94 @@ class NativeHostBoundaryTest(unittest.TestCase):
                 payload = __import__("json").loads(run.stdout)
                 self.assertEqual(payload["value"], expected, source_name)
 
+    def test_exact_canonical_if_expr_ignores_poisoned_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            entries = dist / "workspace" / "examples" / "selfhost_entries"
+            (entries / "hello_if.parse.txt").write_text('"poison"\n', encoding="utf-8")
+            (entries / "hello_if.compile.txt").write_text('{"kind":"pipeline","stdout":"poison","artifact":"\\"poison\\""}\n', encoding="utf-8")
+
+            source_path = tmp_path / "hello_if_copy.ksrc"
+            source_path.write_text((self.root / "examples" / "hello_if.ksrc").read_text(encoding="utf-8"), encoding="utf-8")
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            parse_payload = __import__("json").loads(parse.stdout)
+            ast = __import__("json").loads(parse_payload["ast"])
+            self.assertEqual(ast["statements"][2]["kind"], "print")
+            self.assertNotEqual(parse_payload["ast"], '"poison"')
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            run_payload = __import__("json").loads(run.stdout)
+            self.assertEqual(run_payload["value"], "hello, world!\n")
+            self.assertNotIn("poison", run.stdout)
+
+    def test_exact_canonical_arg_fn_ignores_poisoned_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            entries = dist / "workspace" / "examples" / "selfhost_entries"
+            (entries / "hello_arg_fn.kir.txt").write_text('{"kind":"kir","functions":[{"name":"poison","params":[],"body":[]}],"instructions":[]}\n', encoding="utf-8")
+            (entries / "hello_arg_fn.analysis.txt").write_text('{"kind":"analysis_v1","function_arities":{"poison":0},"effects":{"program":[],"functions":{"poison":[]}}}\n', encoding="utf-8")
+            (entries / "hello_arg_fn.compile.txt").write_text('{"kind":"pipeline","stdout":"poison","artifact":"\\"poison\\""}\n', encoding="utf-8")
+
+            source_path = tmp_path / "hello_arg_fn_copy.ksrc"
+            source_path.write_text((self.root / "examples" / "hello_arg_fn.ksrc").read_text(encoding="utf-8"), encoding="utf-8")
+
+            capir = subprocess.run(
+                [str(launcher_bin), "selfhost-capir", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(capir.returncode, 0, capir.stderr)
+            capir_payload = __import__("json").loads(capir.stdout)
+            kir = capir_payload["kir"]
+            if isinstance(kir, str):
+                kir = __import__("json").loads(kir)
+            self.assertEqual(kir["functions"][0]["name"], "emit_suffix")
+            self.assertNotIn("poison", capir.stdout)
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            run_payload = __import__("json").loads(run.stdout)
+            self.assertEqual(run_payload["value"], "hello, world!\n")
+
     def test_generic_function_native_path_does_not_need_selfhost_entries_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
