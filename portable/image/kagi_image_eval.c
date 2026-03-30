@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "kagi_image_json.h"
 #include "kagi_image_output.h"
 #include "kagi_image_parser.h"
 #include "kagi_image_serializer.h"

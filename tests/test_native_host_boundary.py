@@ -20,9 +20,11 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
         cls.native_image_output_source = cls.root / "portable" / "image" / "kagi_image_output.c"
         cls.native_image_parser_source = cls.root / "portable" / "image" / "kagi_image_parser.c"
+        cls.native_image_json_source = cls.root / "portable" / "image" / "kagi_image_json.c"
         cls.native_image_serializer_source = cls.root / "portable" / "image" / "kagi_image_serializer.c"
         cls.native_image_eval_source = cls.root / "portable" / "image" / "kagi_image_eval.c"
         cls.native_image_dispatch_source = cls.root / "portable" / "image" / "kagi_image_dispatch.c"
+        cls.native_image_serializer_header = cls.root / "portable" / "image" / "kagi_image_serializer.h"
         cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
@@ -102,12 +104,22 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('try_parse_native_function_program', source)
         self.assertIn('free_native_function_program', source)
 
+    def test_native_image_json_source_exists(self):
+        source = self.native_image_json_source.read_text(encoding="utf-8")
+        self.assertIn('append_text', source)
+        self.assertIn('append_char', source)
+        self.assertIn('append_json_string_to_buffer', source)
+
     def test_native_image_serializer_source_exists(self):
         source = self.native_image_serializer_source.read_text(encoding="utf-8")
+        header = self.native_image_serializer_header.read_text(encoding="utf-8")
         self.assertIn('native_stmt_program_to_parse_json', source)
         self.assertIn('native_stmt_program_to_kir_json', source)
         self.assertIn('native_function_program_to_parse_json', source)
         self.assertIn('native_function_program_to_analysis_json', source)
+        self.assertNotIn('append_text', header)
+        self.assertNotIn('append_char', header)
+        self.assertNotIn('append_json_string_to_buffer', header)
 
     def test_native_image_eval_source_exists(self):
         source = self.native_image_eval_source.read_text(encoding="utf-8")
@@ -128,6 +140,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('kagi_canonical_image.c', script)
         self.assertIn('kagi_image_output.c', script)
         self.assertIn('kagi_image_parser.c', script)
+        self.assertIn('kagi_image_json.c', script)
         self.assertIn('kagi_image_serializer.c', script)
         self.assertIn('kagi_image_eval.c', script)
         self.assertIn('kagi_image_dispatch.c', script)
