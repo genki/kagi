@@ -80,8 +80,11 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('selfhost-build', source)
         self.assertIn('selfhost-freeze', source)
         self.assertIn('selfhost-run', source)
-        self.assertIn('selfhost_entries', source)
         self.assertIn('canonical-seed-kir', source)
+        self.assertIn('try_parse_native_function_program', source)
+        self.assertIn('try_parse_native_stmt_program', source)
+        self.assertNotIn('match_canonical_case', source)
+        self.assertNotIn('rewrite_snapshot_identifiers', source)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:

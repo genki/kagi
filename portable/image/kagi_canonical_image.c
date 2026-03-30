@@ -6,11 +6,6 @@
 #include <unistd.h>
 #include <ctype.h>
 
-typedef struct {
-    const char *stem;
-    const char *source_name;
-} canonical_case_t;
-
 typedef enum {
     NATIVE_EXPR_STRING,
     NATIVE_EXPR_CONCAT,
@@ -108,20 +103,6 @@ typedef struct {
     char *call_arg;
     native_stmt_program_t top_level;
 } native_function_program_t;
-
-static const canonical_case_t CANONICAL_CASES[] = {
-    {"hello", "hello.ksrc"},
-    {"hello_arg_fn", "hello_arg_fn.ksrc"},
-    {"hello_concat", "hello_concat.ksrc"},
-    {"hello_fn", "hello_fn.ksrc"},
-    {"hello_if", "hello_if.ksrc"},
-    {"hello_if_stmt", "hello_if_stmt.ksrc"},
-    {"hello_let", "hello_let.ksrc"},
-    {"hello_let_concat", "hello_let_concat.ksrc"},
-    {"hello_let_string", "hello_let_string.ksrc"},
-    {"hello_print_concat", "hello_print_concat.ksrc"},
-    {"hello_twice", "hello_twice.ksrc"},
-};
 
 static void fail(const char *message) {
     fprintf(stderr, "%s\n", message);
@@ -230,72 +211,6 @@ static int normalized_source_equals(const char *left, const char *right) {
     return 1;
 }
 
-static int normalized_source_equals_file(const char *text, const char *path) {
-    char *file_text = read_text_file(path);
-    if (!file_text) {
-        return 0;
-    }
-    int equal = normalized_source_equals(text, file_text);
-    free(file_text);
-    return equal;
-}
-
-typedef struct {
-    char **items;
-    size_t count;
-    size_t capacity;
-} ident_table_t;
-
-static void ident_table_free(ident_table_t *table) {
-    if (!table) {
-        return;
-    }
-    for (size_t i = 0; i < table->count; ++i) {
-        free(table->items[i]);
-    }
-    free(table->items);
-    table->items = NULL;
-    table->count = 0;
-    table->capacity = 0;
-}
-
-static const char *reserved_words[] = {
-    "fn", "let", "print", "if", "else", "call", "return",
-    "concat", "eq", "true", "false"
-};
-
-static int is_reserved_word(const char *text) {
-    for (size_t i = 0; i < sizeof(reserved_words) / sizeof(reserved_words[0]); ++i) {
-        if (strcmp(text, reserved_words[i]) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static size_t intern_identifier(ident_table_t *table, const char *text) {
-    for (size_t i = 0; i < table->count; ++i) {
-        if (strcmp(table->items[i], text) == 0) {
-            return i;
-        }
-    }
-    if (table->count == table->capacity) {
-        size_t next_capacity = table->capacity == 0 ? 8 : table->capacity * 2;
-        char **next_items = realloc(table->items, next_capacity * sizeof(char *));
-        if (!next_items) {
-            fail("out of memory");
-        }
-        table->items = next_items;
-        table->capacity = next_capacity;
-    }
-    table->items[table->count] = strdup(text);
-    if (!table->items[table->count]) {
-        fail("out of memory");
-    }
-    table->count += 1;
-    return table->count - 1;
-}
-
 static void append_text(char **buffer, size_t *length, size_t *capacity, const char *text) {
     size_t add = strlen(text);
     size_t need = *length + add + 1;
@@ -355,225 +270,6 @@ static int is_ident_start_char(unsigned char ch) {
 
 static int is_ident_part_char(unsigned char ch) {
     return isalnum(ch) || ch == '_';
-}
-
-static char *source_fingerprint(const char *source) {
-    ident_table_t table = {0};
-    char *buffer = NULL;
-    size_t length = 0;
-    size_t capacity = 0;
-    size_t i = 0;
-
-    while (source[i]) {
-        unsigned char ch = (unsigned char)source[i];
-        if (is_space_outside_string(ch)) {
-            i++;
-            continue;
-        }
-        if (ch == '"') {
-            size_t start = i;
-            i++;
-            while (source[i]) {
-                if (source[i] == '\\' && source[i + 1]) {
-                    i += 2;
-                    continue;
-                }
-                if (source[i] == '"') {
-                    i++;
-                    break;
-                }
-                i++;
-            }
-            append_char(&buffer, &length, &capacity, 'S');
-            append_char(&buffer, &length, &capacity, '(');
-            for (size_t j = start; j < i; ++j) {
-                append_char(&buffer, &length, &capacity, source[j]);
-            }
-            append_char(&buffer, &length, &capacity, ')');
-            continue;
-        }
-        if (isdigit(ch)) {
-            append_char(&buffer, &length, &capacity, 'N');
-            while (isdigit((unsigned char)source[i])) {
-                i++;
-            }
-            continue;
-        }
-        if (is_ident_start_char(ch)) {
-            size_t start = i;
-            i++;
-            while (is_ident_part_char((unsigned char)source[i])) {
-                i++;
-            }
-            size_t ident_len = i - start;
-            char *ident = calloc(ident_len + 1, 1);
-            if (!ident) {
-                fail("out of memory");
-            }
-            memcpy(ident, source + start, ident_len);
-            ident[ident_len] = '\0';
-            if (is_reserved_word(ident)) {
-                append_text(&buffer, &length, &capacity, ident);
-            } else {
-                char tmp[32];
-                size_t slot = intern_identifier(&table, ident);
-                snprintf(tmp, sizeof(tmp), "@%zu", slot);
-                append_text(&buffer, &length, &capacity, tmp);
-            }
-            free(ident);
-            continue;
-        }
-        if (ch == '-' && source[i + 1] == '>') {
-            append_text(&buffer, &length, &capacity, "->");
-            i += 2;
-            continue;
-        }
-        append_char(&buffer, &length, &capacity, (char)ch);
-        i++;
-    }
-
-    ident_table_free(&table);
-    if (!buffer) {
-        buffer = calloc(1, 1);
-        if (!buffer) {
-            fail("out of memory");
-        }
-    }
-    return buffer;
-}
-
-static ident_table_t collect_identifiers_in_order(const char *source) {
-    ident_table_t table = {0};
-    size_t i = 0;
-    while (source[i]) {
-        unsigned char ch = (unsigned char)source[i];
-        if (is_space_outside_string(ch)) {
-            i++;
-            continue;
-        }
-        if (ch == '"') {
-            i++;
-            while (source[i]) {
-                if (source[i] == '\\' && source[i + 1]) {
-                    i += 2;
-                    continue;
-                }
-                if (source[i] == '"') {
-                    i++;
-                    break;
-                }
-                i++;
-            }
-            continue;
-        }
-        if (is_ident_start_char(ch)) {
-            size_t start = i;
-            i++;
-            while (is_ident_part_char((unsigned char)source[i])) {
-                i++;
-            }
-            size_t ident_len = i - start;
-            char *ident = calloc(ident_len + 1, 1);
-            if (!ident) {
-                fail("out of memory");
-            }
-            memcpy(ident, source + start, ident_len);
-            ident[ident_len] = '\0';
-            if (!is_reserved_word(ident)) {
-                (void)intern_identifier(&table, ident);
-            }
-            free(ident);
-            continue;
-        }
-        i++;
-    }
-    return table;
-}
-
-static char *replace_quoted_identifier(const char *text, const char *old_name, const char *new_name) {
-    size_t old_len = strlen(old_name);
-    size_t capacity = strlen(text) + 1;
-    char *buffer = calloc(capacity, 1);
-    if (!buffer) {
-        fail("out of memory");
-    }
-    size_t length = 0;
-    const char *cursor = text;
-    while (*cursor) {
-        const char *match = strstr(cursor, old_name);
-        if (!match) {
-            append_text(&buffer, &length, &capacity, cursor);
-            break;
-        }
-        int quoted = match > text && match[old_len] == '"' && *(match - 1) == '"';
-        int value_position = quoted && match - 2 >= text && (
-            *(match - 2) == ':' ||
-            *(match - 2) == '[' ||
-            *(match - 2) == ','
-        );
-        if (!value_position) {
-            size_t prefix_len = (size_t)(match - cursor) + old_len;
-            char *chunk = calloc(prefix_len + 1, 1);
-            if (!chunk) {
-                fail("out of memory");
-            }
-            memcpy(chunk, cursor, prefix_len);
-            append_text(&buffer, &length, &capacity, chunk);
-            free(chunk);
-            cursor = match + old_len;
-            continue;
-        }
-        size_t prefix_len = (size_t)(match - cursor);
-        char *chunk = calloc(prefix_len + 1, 1);
-        if (!chunk) {
-            fail("out of memory");
-        }
-        memcpy(chunk, cursor, prefix_len);
-        append_text(&buffer, &length, &capacity, chunk);
-        free(chunk);
-        append_text(&buffer, &length, &capacity, new_name);
-        cursor = match + old_len;
-    }
-    return buffer;
-}
-
-static char *rewrite_snapshot_identifiers(const char *raw, const char *canonical_source, const char *actual_source) {
-    ident_table_t canonical = collect_identifiers_in_order(canonical_source);
-    ident_table_t actual = collect_identifiers_in_order(actual_source);
-    char *current = strdup(raw);
-    if (!current) {
-        fail("out of memory");
-    }
-    if (canonical.count != actual.count) {
-        ident_table_free(&canonical);
-        ident_table_free(&actual);
-        return current;
-    }
-    for (size_t i = 0; i < canonical.count; ++i) {
-        if (strcmp(canonical.items[i], actual.items[i]) == 0) {
-            continue;
-        }
-        char *next = replace_quoted_identifier(current, canonical.items[i], actual.items[i]);
-        free(current);
-        current = next;
-    }
-    ident_table_free(&canonical);
-    ident_table_free(&actual);
-    return current;
-}
-
-static int fingerprint_source_equals_file(const char *text, const char *path) {
-    char *file_text = read_text_file(path);
-    if (!file_text) {
-        return 0;
-    }
-    char *left = source_fingerprint(text);
-    char *right = source_fingerprint(file_text);
-    int equal = left && right && strcmp(left, right) == 0;
-    free(left);
-    free(right);
-    free(file_text);
-    return equal;
 }
 
 static char *trim_copy(const char *text) {
@@ -1010,12 +706,49 @@ static int append_native_stmt(native_stmt_program_t *program, native_stmt_t *stm
     return 1;
 }
 
+static char *expand_compact_braces(const char *source) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    int in_string = 0;
+    for (size_t i = 0; source[i]; ++i) {
+        char ch = source[i];
+        if (ch == '"' && (i == 0 || source[i - 1] != '\\')) {
+            in_string = !in_string;
+            append_char(&buffer, &length, &capacity, ch);
+            continue;
+        }
+        if (!in_string && ch == '{') {
+            append_char(&buffer, &length, &capacity, ch);
+            if (source[i + 1] && source[i + 1] != '\n') {
+                append_char(&buffer, &length, &capacity, '\n');
+            }
+            continue;
+        }
+        if (!in_string && ch == '}') {
+            if (length > 0 && buffer[length - 1] != '\n') {
+                append_char(&buffer, &length, &capacity, '\n');
+            }
+            append_char(&buffer, &length, &capacity, ch);
+            if (source[i + 1] && source[i + 1] != '\n') {
+                append_char(&buffer, &length, &capacity, '\n');
+            }
+            continue;
+        }
+        append_char(&buffer, &length, &capacity, ch);
+    }
+    if (!buffer) {
+        buffer = strdup(source);
+        if (!buffer) {
+            fail("out of memory");
+        }
+    }
+    return buffer;
+}
+
 static int try_parse_native_stmt_program(const char *source, native_stmt_program_t *out) {
     memset(out, 0, sizeof(*out));
-    char *copy = strdup(source);
-    if (!copy) {
-        fail("out of memory");
-    }
+    char *copy = expand_compact_braces(source);
     char *lines[64] = {0};
     size_t count = 0;
     for (char *line = strtok(copy, "\n"); line && count < 64; line = strtok(NULL, "\n")) {
@@ -1094,12 +827,30 @@ static int try_parse_native_stmt_program(const char *source, native_stmt_program
             }
             free(condition);
             stmt.condition_name = condition_ident;
+            size_t else_print_index = 0;
+            size_t close_index = 0;
+            int compact_else = compact_line_equals(lines[i + 2], "} else {");
+            int split_else = compact_line_equals(lines[i + 2], "}") && compact_line_equals(lines[i + 3], "else {");
+            if (compact_else) {
+                else_print_index = i + 3;
+                close_index = i + 4;
+            } else if (split_else) {
+                if (i + 5 >= count) {
+                    free_native_stmt(&stmt);
+                    free_native_stmt_program(out);
+                    for (size_t j = 0; j < count; ++j) free(lines[j]);
+                    free(copy);
+                    return 0;
+                }
+                else_print_index = i + 4;
+                close_index = i + 5;
+            }
             if (strncmp(lines[i + 1], "print ", 6) != 0 ||
-                !compact_line_equals(lines[i + 2], "} else {") ||
-                strncmp(lines[i + 3], "print ", 6) != 0 ||
-                !compact_line_equals(lines[i + 4], "}") ||
+                (!compact_else && !split_else) ||
+                strncmp(lines[else_print_index], "print ", 6) != 0 ||
+                !compact_line_equals(lines[close_index], "}") ||
                 !parse_runtime_expr(lines[i + 1] + 6, &stmt.then_expr) ||
-                !parse_runtime_expr(lines[i + 3] + 6, &stmt.else_expr)) {
+                !parse_runtime_expr(lines[else_print_index] + 6, &stmt.else_expr)) {
                 free_native_stmt(&stmt);
                 free_native_stmt_program(out);
                 for (size_t j = 0; j < count; ++j) free(lines[j]);
@@ -1107,7 +858,7 @@ static int try_parse_native_stmt_program(const char *source, native_stmt_program
                 return 0;
             }
             append_native_stmt(out, &stmt);
-            i += 5;
+            i = close_index + 1;
             continue;
         }
         free_native_stmt_program(out);
@@ -1202,10 +953,7 @@ static int parse_call_line(
 
 static int try_parse_native_function_program(const char *source, native_function_program_t *out) {
     memset(out, 0, sizeof(*out));
-    char *copy = strdup(source);
-    if (!copy) {
-        fail("out of memory");
-    }
+    char *copy = expand_compact_braces(source);
     char *lines[96] = {0};
     size_t count = 0;
     for (char *line = strtok(copy, "\n"); line && count < 96; line = strtok(NULL, "\n")) {
@@ -1281,7 +1029,13 @@ static int try_parse_native_function_program(const char *source, native_function
         if (compact_line_equals(lines[i], "} else {")) {
             continue;
         }
+        if (compact_line_equals(lines[i], "else {")) {
+            continue;
+        }
         if (compact_line_equals(lines[i], "}")) {
+            if (i + 1 < count && compact_line_equals(lines[i + 1], "else {")) {
+                continue;
+            }
             depth--;
             if (depth == 0) {
                 close_index = i;
@@ -1809,37 +1563,8 @@ static char *native_function_program_to_artifact_json(const native_function_prog
     return print_texts_to_artifact_json(body_prints, body_count + top_count);
 }
 
-static const canonical_case_t *match_canonical_case(const char *workspace, const char *program_source) {
-    char examples_dir[PATH_MAX];
-    char source_path[PATH_MAX];
-    join_path(examples_dir, sizeof(examples_dir), workspace, "examples");
-    for (size_t i = 0; i < sizeof(CANONICAL_CASES) / sizeof(CANONICAL_CASES[0]); ++i) {
-        join_path(source_path, sizeof(source_path), examples_dir, CANONICAL_CASES[i].source_name);
-        if (
-            normalized_source_equals_file(program_source, source_path) ||
-            fingerprint_source_equals_file(program_source, source_path)
-        ) {
-            return &CANONICAL_CASES[i];
-        }
-    }
-    return NULL;
-}
-
 static int is_json_flag(const char *arg) {
     return strcmp(arg, "--json") == 0;
-}
-
-static char *load_entry_text(const char *examples_dir, const char *stem, const char *entry) {
-    char entry_dir[PATH_MAX];
-    char filename[PATH_MAX];
-    char path[PATH_MAX];
-    join_path(entry_dir, sizeof(entry_dir), examples_dir, "selfhost_entries");
-    int written = snprintf(filename, sizeof(filename), "%s.%s.txt", stem, entry);
-    if (written < 0 || (size_t)written >= sizeof(filename)) {
-        fail("entry filename too long");
-    }
-    join_path(path, sizeof(path), entry_dir, filename);
-    return read_text_file(path);
 }
 
 static char *extract_compile_texts_json(const char *bundle_json) {
@@ -2344,90 +2069,14 @@ int main(int argc, char **argv) {
             free(frontend_source); free(program_source); free(frontend_kir); free(canonical_frontend);
             return 0;
         }
-        const canonical_case_t *matched = match_canonical_case(kagi_home, program_source);
-        if (!matched) {
-            free_native_function_program(&native_function_program);
-            free_native_stmt_program(&native_stmt_program);
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
-            unsupported_source();
-            return 1;
-        }
-
-        char canonical_program_path[PATH_MAX];
-        join_path(canonical_program_path, sizeof(canonical_program_path), examples_dir, matched->source_name);
-        char *canonical_program_source = read_text_file(canonical_program_path);
-        char *raw_ast = load_entry_text(examples_dir, matched->stem, "parse");
-        char *raw_hir = load_entry_text(examples_dir, matched->stem, "hir");
-        char *raw_kir = load_entry_text(examples_dir, matched->stem, "kir");
-        char *raw_analysis = load_entry_text(examples_dir, matched->stem, "analysis");
-        char *raw_artifact = load_entry_text(examples_dir, matched->stem, "compile");
-        if (!canonical_program_source || !raw_ast || !raw_hir || !raw_kir || !raw_analysis || !raw_artifact) {
-            free(frontend_source);
-            free(program_source);
-            free(frontend_kir);
-            free(canonical_frontend);
-            free(canonical_program_source);
-            free(raw_ast);
-            free(raw_hir);
-            free(raw_kir);
-            free(raw_analysis);
-            free(raw_artifact);
-            fail("missing canonical entry snapshot");
-        }
-
-        char *mapped_ast = rewrite_snapshot_identifiers(raw_ast, canonical_program_source, program_source);
-        char *mapped_hir = rewrite_snapshot_identifiers(raw_hir, canonical_program_source, program_source);
-        char *mapped_kir = rewrite_snapshot_identifiers(raw_kir, canonical_program_source, program_source);
-        char *mapped_analysis = rewrite_snapshot_identifiers(raw_analysis, canonical_program_source, program_source);
-        free(raw_ast);
-        free(raw_hir);
-        free(raw_kir);
-        free(raw_analysis);
-        raw_ast = mapped_ast;
-        raw_hir = mapped_hir;
-        raw_kir = mapped_kir;
-        raw_analysis = mapped_analysis;
-        free(canonical_program_source);
-
-        if (strcmp(command, "selfhost-run") == 0) {
-            if (use_json) {
-                emit_selfhost_run_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-                fputc('\n', stdout);
-            } else {
-                emit_print_many_stdout(raw_artifact);
-            }
-        } else if (strcmp(command, "selfhost-check") == 0) {
-            emit_selfhost_check_payload(argv[arg_index + 1], use_json, raw_ast, raw_hir, raw_analysis);
-            fputc('\n', stdout);
-        } else if (strcmp(command, "selfhost-emit") == 0) {
-            emit_selfhost_emit_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_artifact);
-            fputc('\n', stdout);
-        } else if (strcmp(command, "selfhost-capir") == 0) {
-            emit_selfhost_capir_payload(argv[arg_index + 1], raw_ast, raw_hir, raw_kir, raw_artifact);
-            fputc('\n', stdout);
-        } else if (strcmp(command, "selfhost-parse") == 0) {
-            printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
-            emit_json_string(argv[arg_index + 1]);
-            printf(",\"ast\":");
-            emit_json_string(raw_ast);
-            fputs("}\n", stdout);
-        }
-
-        free(raw_ast);
-        free(raw_hir);
-        free(raw_kir);
-        free(raw_analysis);
-        free(raw_artifact);
         free_native_function_program(&native_function_program);
         free_native_stmt_program(&native_stmt_program);
         free(frontend_source);
         free(program_source);
         free(frontend_kir);
         free(canonical_frontend);
-        return 0;
+        unsupported_source();
+        return 1;
     }
 
     free(frontend_kir);
