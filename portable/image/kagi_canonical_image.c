@@ -1610,10 +1610,12 @@ static void emit_print_many_stdout(const char *bundle_json) {
     free(texts);
 }
 
-static void emit_selfhost_bootstrap_json(const char *kir_json) {
+static void emit_selfhost_fixed_point_json(const char *seed_kind, const char *kir_json) {
     printf("{\n");
     printf("  \"ok\": true,\n");
-    printf("  \"seed_kind\": \"canonical-seed-kir\",\n");
+    if (seed_kind) {
+        printf("  \"seed_kind\": \"%s\",\n", seed_kind);
+    }
     printf("  \"fixed_point\": true,\n");
     printf("  \"stage0_kir\": %s,\n", kir_json);
     printf("  \"stage1_kir\": %s,\n", kir_json);
@@ -1621,14 +1623,12 @@ static void emit_selfhost_bootstrap_json(const char *kir_json) {
     printf("}\n");
 }
 
+static void emit_selfhost_bootstrap_json(const char *kir_json) {
+    emit_selfhost_fixed_point_json("canonical-seed-kir", kir_json);
+}
+
 static void emit_selfhost_build_json(const char *kir_json) {
-    printf("{\n");
-    printf("  \"ok\": true,\n");
-    printf("  \"fixed_point\": true,\n");
-    printf("  \"stage0_kir\": %s,\n", kir_json);
-    printf("  \"stage1_kir\": %s,\n", kir_json);
-    printf("  \"stage2_kir\": %s\n", kir_json);
-    printf("}\n");
+    emit_selfhost_fixed_point_json(NULL, kir_json);
 }
 
 static void emit_selfhost_freeze_json(const char *kir_json) {
@@ -1842,6 +1842,12 @@ static void unsupported_source(void) {
     printf("{\"ok\":false,\"diagnostic\":{\"phase\":\"selfhost\",\"code\":\"selfhost_error\",\"message\":\"error: unsupported source\",\"line\":null,\"column\":null,\"snippet\":null}}\n");
 }
 
+static int is_selfhost_fixed_point_command(const char *command) {
+    return strcmp(command, "selfhost-bootstrap") == 0 ||
+           strcmp(command, "selfhost-build") == 0 ||
+           strcmp(command, "selfhost-freeze") == 0;
+}
+
 static int emit_native_selfhost_command(
     const char *command,
     int use_json,
@@ -1912,7 +1918,7 @@ int main(int argc, char **argv) {
         fail("missing canonical frontend KIR");
     }
 
-    if (strcmp(command, "selfhost-bootstrap") == 0 || strcmp(command, "selfhost-build") == 0 || strcmp(command, "selfhost-freeze") == 0) {
+    if (is_selfhost_fixed_point_command(command)) {
         int use_json = 0;
         const char *frontend_arg = NULL;
         for (int i = 3; i < argc; ++i) {
