@@ -18,6 +18,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.native_runtime_source = cls.root / "portable" / "runtime" / "kagi_native_runtime.c"
         cls.native_runtime_build_script = cls.root / "portable" / "runtime" / "build.sh"
         cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
+        cls.native_image_output_source = cls.root / "portable" / "image" / "kagi_image_output.c"
         cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
@@ -76,15 +77,25 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_native_image_source_exists(self):
         source = self.native_image_source.read_text(encoding="utf-8")
-        self.assertIn('selfhost-bootstrap', source)
-        self.assertIn('selfhost-build', source)
-        self.assertIn('selfhost-freeze', source)
-        self.assertIn('selfhost-run', source)
-        self.assertIn('canonical-seed-kir', source)
+        self.assertIn('#include "kagi_image_output.h"', source)
+        self.assertIn('is_selfhost_fixed_point_command(command)', source)
+        self.assertIn('emit_native_selfhost_command(', source)
         self.assertIn('try_parse_native_function_program', source)
         self.assertIn('try_parse_native_stmt_program', source)
         self.assertNotIn('match_canonical_case', source)
         self.assertNotIn('rewrite_snapshot_identifiers', source)
+
+    def test_native_image_output_source_exists(self):
+        source = self.native_image_output_source.read_text(encoding="utf-8")
+        self.assertIn('canonical-seed-kir', source)
+        self.assertIn('emit_selfhost_bootstrap_json', source)
+        self.assertIn('emit_native_selfhost_command', source)
+        self.assertIn('unsupported_source', source)
+
+    def test_native_image_build_script_compiles_split_sources(self):
+        script = self.native_image_build_script.read_text(encoding="utf-8")
+        self.assertIn('kagi_canonical_image.c', script)
+        self.assertIn('kagi_image_output.c', script)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -742,6 +753,62 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(run.stdout)
             self.assertTrue(payload["ok"])
             self.assertTrue(payload["fixed_point"])
+
+    def test_selfhost_bootstrap_kir_alias_does_not_need_canonical_frontend_source_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            os.remove(dist / "workspace" / "examples" / "selfhost_frontend.ks")
+
+            frontend_kir_alias = tmp_path / "frontend_alias.kir.json"
+            frontend_kir_alias.write_text(
+                (self.root / "examples" / "selfhost_frontend.kir.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-bootstrap", "--json", str(frontend_kir_alias)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
 
     def test_default_manifest_native_image_accepts_whitespace_frontend_and_identifier_renamed_program_json(self):
         with tempfile.TemporaryDirectory() as tmp:
