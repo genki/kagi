@@ -2005,6 +2005,49 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertEqual(kir["functions"][0]["name"], "shout")
             self.assertEqual(kir["instructions"][0]["name"], "shout")
 
+    def test_exact_canonical_corpus_runs_without_selfhost_entries_snapshots(self):
+        corpus = {
+            "hello.ksrc": "hello, world!\n",
+            "hello_concat.ksrc": "hello, world!\n",
+            "hello_print_concat.ksrc": "hello, world!\n",
+            "hello_twice.ksrc": "hello\nworld\n",
+            "hello_let.ksrc": "hello, world!\n",
+            "hello_let_string.ksrc": "hello, world!\n",
+            "hello_let_concat.ksrc": "hello, world!\n",
+            "hello_if.ksrc": "hello, world!\n",
+            "hello_if_stmt.ksrc": "hello, world!\n",
+            "hello_fn.ksrc": "hello, world!\n",
+            "hello_arg_fn.ksrc": "hello, world!\n",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run([str(self.build_script), str(launcher_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run([str(self.native_runtime_build_script), str(native_runtime_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run([str(self.native_image_build_script), str(native_image_bin)], cwd=self.root, check=True, capture_output=True, text=True)
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            shutil.rmtree(dist / "workspace" / "examples" / "selfhost_entries")
+
+            for source_name, expected in corpus.items():
+                source_path = tmp_path / f"copy_{source_name}"
+                source_path.write_text((self.root / "examples" / source_name).read_text(encoding="utf-8"), encoding="utf-8")
+                run = subprocess.run(
+                    [str(launcher_bin), "selfhost-run", "--json", str(self.root / "examples" / "selfhost_frontend.ks"), str(source_path)],
+                    cwd=dist, check=False, capture_output=True, text=True, env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+                )
+                self.assertEqual(run.returncode, 0, f"{source_name}: {run.stderr}")
+                payload = __import__("json").loads(run.stdout)
+                self.assertEqual(payload["value"], expected, source_name)
+
     def test_generic_function_native_path_does_not_need_selfhost_entries_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
