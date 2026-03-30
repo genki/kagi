@@ -6,6 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../common/kagi_portable_abi.h"
+
 extern char **environ;
 
 typedef struct {
@@ -83,29 +85,29 @@ static runtime_manifest_t load_runtime_manifest(const char *dist_root) {
         trim_line(key);
         trim_line(value);
 
-        if (strcmp(key, "RUNTIME_KIND") == 0) {
+        if (strcmp(key, KAGI_MANIFEST_RUNTIME_KIND) == 0) {
             snprintf(manifest.runtime_kind, sizeof(manifest.runtime_kind), "%s", value);
-        } else if (strcmp(key, "RUNTIME_BIN_REL") == 0) {
+        } else if (strcmp(key, KAGI_MANIFEST_RUNTIME_BIN_REL) == 0) {
             snprintf(manifest.runtime_bin_rel, sizeof(manifest.runtime_bin_rel), "%s", value);
-        } else if (strcmp(key, "ENTRY_STYLE") == 0) {
+        } else if (strcmp(key, KAGI_MANIFEST_ENTRY_STYLE) == 0) {
             snprintf(manifest.entry_style, sizeof(manifest.entry_style), "%s", value);
-        } else if (strcmp(key, "ENTRY_TARGET") == 0) {
+        } else if (strcmp(key, KAGI_MANIFEST_ENTRY_TARGET) == 0) {
             snprintf(manifest.entry_target, sizeof(manifest.entry_target), "%s", value);
-        } else if (strcmp(key, "IMAGE_REL") == 0) {
+        } else if (strcmp(key, KAGI_MANIFEST_IMAGE_REL) == 0) {
             snprintf(manifest.image_rel, sizeof(manifest.image_rel), "%s", value);
-        } else if (strcmp(key, "WORKSPACE_REL") == 0) {
+        } else if (strcmp(key, KAGI_MANIFEST_WORKSPACE_REL) == 0) {
             snprintf(manifest.workspace_rel, sizeof(manifest.workspace_rel), "%s", value);
         }
     }
 
     fclose(fp);
 
-    require_manifest_value("RUNTIME_KIND", manifest.runtime_kind);
-    require_manifest_value("RUNTIME_BIN_REL", manifest.runtime_bin_rel);
-    require_manifest_value("ENTRY_STYLE", manifest.entry_style);
-    require_manifest_value("ENTRY_TARGET", manifest.entry_target);
-    require_manifest_value("IMAGE_REL", manifest.image_rel);
-    require_manifest_value("WORKSPACE_REL", manifest.workspace_rel);
+    require_manifest_value(KAGI_MANIFEST_RUNTIME_KIND, manifest.runtime_kind);
+    require_manifest_value(KAGI_MANIFEST_RUNTIME_BIN_REL, manifest.runtime_bin_rel);
+    require_manifest_value(KAGI_MANIFEST_ENTRY_STYLE, manifest.entry_style);
+    require_manifest_value(KAGI_MANIFEST_ENTRY_TARGET, manifest.entry_target);
+    require_manifest_value(KAGI_MANIFEST_IMAGE_REL, manifest.image_rel);
+    require_manifest_value(KAGI_MANIFEST_WORKSPACE_REL, manifest.workspace_rel);
     return manifest;
 }
 
@@ -138,18 +140,18 @@ int main(int argc, char **argv) {
     join_path_or_die(image_path, sizeof(image_path), dist_root, manifest.image_rel);
     join_path_or_die(kagi_home, sizeof(kagi_home), dist_root, manifest.workspace_rel);
 
-    set_env_or_die("KAGI_HOME", kagi_home);
+    set_env_or_die(KAGI_ENV_HOME, kagi_home);
 
-    if (strcmp(manifest.runtime_kind, "python") == 0) {
-        if (strcmp(manifest.entry_style, "python-module") != 0) {
+    if (strcmp(manifest.runtime_kind, KAGI_RUNTIME_KIND_PYTHON) == 0) {
+        if (strcmp(manifest.entry_style, KAGI_ENTRY_STYLE_PYTHON_MODULE) != 0) {
             fprintf(stderr, "unsupported entry style for python runtime: %s\n", manifest.entry_style);
             return 1;
         }
 
-        set_env_or_die("PYTHONHOME", python_home);
-        set_env_or_die("PYTHONPATH", image_path);
-        set_env_or_die("PYTHONNOUSERSITE", "1");
-        set_env_or_die("PYTHONDONTWRITEBYTECODE", "1");
+        set_env_or_die(KAGI_ENV_PYTHONHOME, python_home);
+        set_env_or_die(KAGI_ENV_PYTHONPATH, image_path);
+        set_env_or_die(KAGI_ENV_PYTHONNOUSERSITE, "1");
+        set_env_or_die(KAGI_ENV_PYTHONDONTWRITEBYTECODE, "1");
 
         char **child_argv = calloc((size_t)argc + 5, sizeof(char *));
         if (!child_argv) {
@@ -171,14 +173,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (strcmp(manifest.runtime_kind, "native") == 0) {
-        if (strcmp(manifest.entry_style, "direct") != 0) {
+    if (strcmp(manifest.runtime_kind, KAGI_RUNTIME_KIND_NATIVE) == 0) {
+        if (strcmp(manifest.entry_style, KAGI_ENTRY_STYLE_DIRECT) != 0) {
             fprintf(stderr, "unsupported entry style for native runtime: %s\n", manifest.entry_style);
             return 1;
         }
 
-        set_env_or_die("KAGI_IMAGE", image_path);
-        set_env_or_die("KAGI_ENTRY_TARGET", manifest.entry_target);
+        set_env_or_die(KAGI_ENV_IMAGE, image_path);
+        set_env_or_die(KAGI_ENV_ENTRY_TARGET, manifest.entry_target);
 
         char **child_argv = calloc((size_t)argc + 3, sizeof(char *));
         if (!child_argv) {

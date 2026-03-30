@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../common/kagi_portable_abi.h"
+
 extern char **environ;
 
 static void set_env_or_die(const char *key, const char *value) {
@@ -30,14 +32,14 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    const char *image_path = getenv("KAGI_IMAGE");
-    const char *kagi_home = getenv("KAGI_HOME");
+    const char *image_path = getenv(KAGI_ENV_IMAGE);
+    const char *kagi_home = getenv(KAGI_ENV_HOME);
     if (!image_path || image_path[0] == '\0') {
-        fprintf(stderr, "missing KAGI_IMAGE\n");
+        fprintf(stderr, "missing %s\n", KAGI_ENV_IMAGE);
         return 1;
     }
     if (!kagi_home || kagi_home[0] == '\0') {
-        fprintf(stderr, "missing KAGI_HOME\n");
+        fprintf(stderr, "missing %s\n", KAGI_ENV_HOME);
         return 1;
     }
 
@@ -80,10 +82,10 @@ int main(int argc, char **argv) {
 
     char python_bin[PATH_MAX];
     join_path_or_die(python_bin, sizeof(python_bin), dist_root, "bin/python3");
-    set_env_or_die("PYTHONPATH", image_path);
-    set_env_or_die("PYTHONNOUSERSITE", "1");
-    set_env_or_die("PYTHONDONTWRITEBYTECODE", "1");
-    set_env_or_die("KAGI_HOME", kagi_home);
+    set_env_or_die(KAGI_ENV_PYTHONPATH, image_path);
+    set_env_or_die(KAGI_ENV_PYTHONNOUSERSITE, "1");
+    set_env_or_die(KAGI_ENV_PYTHONDONTWRITEBYTECODE, "1");
+    set_env_or_die(KAGI_ENV_HOME, kagi_home);
 
     char **child_argv = calloc((size_t)argc + 4, sizeof(char *));
     if (!child_argv) {

@@ -15,6 +15,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.launcher_source = cls.root / "portable" / "launcher" / "kagi_launcher.c"
         cls.build_script = cls.root / "portable" / "launcher" / "build.sh"
         cls.runtime_manifest = cls.root / "portable" / "launcher" / "kagi_runtime.env"
+        cls.portable_abi_header = cls.root / "portable" / "common" / "kagi_portable_abi.h"
         cls.native_runtime_source = cls.root / "portable" / "runtime" / "kagi_native_runtime.c"
         cls.native_runtime_build_script = cls.root / "portable" / "runtime" / "build.sh"
         cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
@@ -30,18 +31,26 @@ class NativeHostBoundaryTest(unittest.TestCase):
     def test_vendored_portable_launcher_source_exists(self):
         self.assertTrue(self.launcher_source.exists())
 
+    def test_portable_abi_header_exists(self):
+        source = self.portable_abi_header.read_text(encoding="utf-8")
+        self.assertIn('KAGI_ENV_HOME', source)
+        self.assertIn('KAGI_ENV_IMAGE', source)
+        self.assertIn('KAGI_MANIFEST_RUNTIME_KIND', source)
+        self.assertIn('KAGI_ENTRY_STYLE_DIRECT', source)
+
     def test_vendored_portable_launcher_keeps_python_bridge_as_compatibility_boundary(self):
         source = self.launcher_source.read_text(encoding="utf-8")
+        self.assertIn('../common/kagi_portable_abi.h', source)
         self.assertIn('kagi_runtime.env', source)
-        self.assertIn('RUNTIME_KIND', source)
-        self.assertIn('RUNTIME_BIN_REL', source)
-        self.assertIn('ENTRY_STYLE', source)
-        self.assertIn('ENTRY_TARGET', source)
-        self.assertIn('IMAGE_REL', source)
-        self.assertIn('WORKSPACE_REL', source)
-        self.assertIn('PYTHONHOME', source)
-        self.assertIn('PYTHONPATH', source)
-        self.assertIn('KAGI_HOME', source)
+        self.assertIn('KAGI_MANIFEST_RUNTIME_KIND', source)
+        self.assertIn('KAGI_MANIFEST_RUNTIME_BIN_REL', source)
+        self.assertIn('KAGI_MANIFEST_ENTRY_STYLE', source)
+        self.assertIn('KAGI_MANIFEST_ENTRY_TARGET', source)
+        self.assertIn('KAGI_MANIFEST_IMAGE_REL', source)
+        self.assertIn('KAGI_MANIFEST_WORKSPACE_REL', source)
+        self.assertIn('KAGI_ENV_PYTHONHOME', source)
+        self.assertIn('KAGI_ENV_PYTHONPATH', source)
+        self.assertIn('KAGI_ENV_HOME', source)
         self.assertIn('"failed to exec bundled python: %s\\n"', source)
 
     def test_launcher_build_script_exists_and_targets_vendored_source(self):
@@ -66,16 +75,17 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_launcher_source_supports_native_direct_runtime_kind(self):
         source = self.launcher_source.read_text(encoding="utf-8")
-        self.assertIn('strcmp(manifest.runtime_kind, "native") == 0', source)
-        self.assertIn('strcmp(manifest.entry_style, "direct") != 0', source)
-        self.assertIn('KAGI_IMAGE', source)
-        self.assertIn('KAGI_ENTRY_TARGET', source)
+        self.assertIn('strcmp(manifest.runtime_kind, KAGI_RUNTIME_KIND_NATIVE) == 0', source)
+        self.assertIn('strcmp(manifest.entry_style, KAGI_ENTRY_STYLE_DIRECT) != 0', source)
+        self.assertIn('KAGI_ENV_IMAGE', source)
+        self.assertIn('KAGI_ENV_ENTRY_TARGET', source)
         self.assertIn('failed to exec native runtime', source)
 
     def test_native_runtime_bridge_source_exists(self):
         source = self.native_runtime_source.read_text(encoding="utf-8")
-        self.assertIn('missing KAGI_IMAGE', source)
-        self.assertIn('missing KAGI_HOME', source)
+        self.assertIn('../common/kagi_portable_abi.h', source)
+        self.assertIn('missing %s\\n", KAGI_ENV_IMAGE', source)
+        self.assertIn('missing %s\\n", KAGI_ENV_HOME', source)
         self.assertIn('failed to exec native image', source)
         self.assertIn('failed to exec native bridge python', source)
         self.assertIn('bin/python3', source)
@@ -207,6 +217,64 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["seed_kind"], "canonical-seed-kir")
 
+    def test_built_launcher_passes_entry_target_by_argv_and_env_to_native_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            fake_runtime = dist / "bin" / "fake-native-runtime"
+            fake_runtime.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "printf 'argv_entry=%s\\n' \"$1\"\n"
+                "printf 'env_entry=%s\\n' \"${KAGI_ENTRY_TARGET:-}\"\n"
+                "printf 'image=%s\\n' \"$KAGI_IMAGE\"\n"
+                "printf 'home=%s\\n' \"$KAGI_HOME\"\n",
+                encoding="utf-8",
+            )
+            fake_runtime.chmod(0o755)
+
+            direct_image = dist / "app" / "direct-image"
+            direct_image.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            direct_image.chmod(0o755)
+
+            (dist / "app" / "kagi_runtime.env").write_text(
+                "RUNTIME_KIND=native\n"
+                "RUNTIME_BIN_REL=bin/fake-native-runtime\n"
+                "ENTRY_STYLE=direct\n"
+                "ENTRY_TARGET=kagi.host_entry\n"
+                "IMAGE_REL=app/direct-image\n"
+                "WORKSPACE_REL=workspace\n",
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [str(launcher_bin), "selfhost-bootstrap", "--json", "frontend.ks"],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("argv_entry=kagi.host_entry", completed.stdout)
+            self.assertIn("env_entry=kagi.host_entry", completed.stdout)
+            self.assertIn(f"image={dist / 'app' / 'direct-image'}", completed.stdout)
+            self.assertIn(f"home={dist / 'workspace'}", completed.stdout)
+
     def test_native_runtime_bridge_can_exec_direct_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -255,6 +323,53 @@ class NativeHostBoundaryTest(unittest.TestCase):
             self.assertIn("entry=selfhost.bootstrap", completed.stdout)
             self.assertIn(f"home={dist / 'workspace'}", completed.stdout)
             self.assertIn("args=--json hello.ks", completed.stdout)
+
+    def test_native_runtime_direct_image_prefers_argv_entry_over_env_entry_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            direct_image = dist / "app" / "direct-image"
+            direct_image.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "printf 'argv_entry=%s\\n' \"$1\"\n"
+                "printf 'env_entry=%s\\n' \"${KAGI_ENTRY_TARGET:-}\"\n",
+                encoding="utf-8",
+            )
+            direct_image.chmod(0o755)
+
+            completed = subprocess.run(
+                [str(native_runtime_bin), "selfhost.bootstrap", "--json", "hello.ks"],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "KAGI_IMAGE": str(direct_image),
+                    "KAGI_HOME": str(dist / "workspace"),
+                    "KAGI_ENTRY_TARGET": "wrong.entry",
+                    "PYTHONHOME": "",
+                    "PYTHONPATH": "",
+                },
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("argv_entry=selfhost.bootstrap", completed.stdout)
+            self.assertIn("env_entry=wrong.entry", completed.stdout)
 
     def test_built_launcher_can_execute_canonical_native_image_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
