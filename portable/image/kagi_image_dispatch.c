@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../common/kagi_portable_abi.h"
 #include "kagi_image_output.h"
 #include "kagi_image_parser.h"
 #include "kagi_image_serializer.h"
@@ -109,13 +110,13 @@ static int handle_fixed_point_command(
     }
     free(frontend_source);
 
-    if (strcmp(command, "selfhost-bootstrap") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_BOOTSTRAP) == 0) {
         if (use_json) {
             emit_selfhost_bootstrap_json(frontend_kir);
         } else {
             printf("%s\n", frontend_kir);
         }
-    } else if (strcmp(command, "selfhost-build") == 0) {
+    } else if (strcmp(command, KAGI_SELFHOST_CMD_BUILD) == 0) {
         if (use_json) {
             emit_selfhost_build_json(frontend_kir);
         } else {
@@ -250,11 +251,11 @@ int run_kagi_canonical_image(int argc, char **argv) {
     if (is_selfhost_fixed_point_command(command)) {
         exit_code = handle_fixed_point_command(command, argc, argv, frontend_kir, frontend_src_path, &canonical_frontend);
     } else if (
-        strcmp(command, "selfhost-run") == 0 ||
-        strcmp(command, "selfhost-check") == 0 ||
-        strcmp(command, "selfhost-emit") == 0 ||
-        strcmp(command, "selfhost-capir") == 0 ||
-        strcmp(command, "selfhost-parse") == 0
+        strcmp(command, KAGI_SELFHOST_CMD_RUN) == 0 ||
+        strcmp(command, KAGI_SELFHOST_CMD_CHECK) == 0 ||
+        strcmp(command, KAGI_SELFHOST_CMD_EMIT) == 0 ||
+        strcmp(command, KAGI_SELFHOST_CMD_CAPIR) == 0 ||
+        strcmp(command, KAGI_SELFHOST_CMD_PARSE) == 0
     ) {
         exit_code = handle_selfhost_program_command(command, argc, argv, frontend_kir, frontend_src_path, &canonical_frontend);
     } else {

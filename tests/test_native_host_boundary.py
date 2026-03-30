@@ -39,6 +39,9 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('KAGI_ENTRY_STYLE_DIRECT', source)
         self.assertIn('KAGI_PORTABLE_RUNTIME_MANIFEST_REL', source)
         self.assertIn('KAGI_PORTABLE_PYTHON_BIN_REL', source)
+        self.assertIn('KAGI_SELFHOST_CMD_BOOTSTRAP', source)
+        self.assertIn('KAGI_SELFHOST_CMD_RUN', source)
+        self.assertIn('KAGI_SEED_KIND_CANONICAL_SEED_KIR', source)
 
     def test_portable_abi_header_documents_native_entry_contract(self):
         source = self.portable_abi_header.read_text(encoding="utf-8")
@@ -109,7 +112,9 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_native_image_output_source_exists(self):
         source = self.native_image_output_source.read_text(encoding="utf-8")
-        self.assertIn('canonical-seed-kir', source)
+        self.assertIn('../common/kagi_portable_abi.h', source)
+        self.assertIn('KAGI_SEED_KIND_CANONICAL_SEED_KIR', source)
+        self.assertIn('KAGI_SELFHOST_CMD_BOOTSTRAP', source)
         self.assertIn('emit_selfhost_bootstrap_json', source)
         self.assertIn('emit_native_selfhost_command', source)
         self.assertIn('unsupported_source', source)
@@ -147,6 +152,9 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_native_image_dispatch_source_exists(self):
         source = self.native_image_dispatch_source.read_text(encoding="utf-8")
+        self.assertIn('../common/kagi_portable_abi.h', source)
+        self.assertIn('KAGI_SELFHOST_CMD_RUN', source)
+        self.assertIn('KAGI_SELFHOST_CMD_PARSE', source)
         self.assertIn('run_kagi_canonical_image', source)
         self.assertIn('frontend_matches_canonical_or_kir', source)
         self.assertIn('handle_fixed_point_command', source)

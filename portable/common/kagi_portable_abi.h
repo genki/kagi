@@ -37,4 +37,15 @@
 #define KAGI_PORTABLE_RUNTIME_MANIFEST_REL "app/kagi_runtime.env"
 #define KAGI_PORTABLE_PYTHON_BIN_REL "bin/python3"
 
+#define KAGI_SELFHOST_CMD_BOOTSTRAP "selfhost-bootstrap"
+#define KAGI_SELFHOST_CMD_BUILD "selfhost-build"
+#define KAGI_SELFHOST_CMD_FREEZE "selfhost-freeze"
+#define KAGI_SELFHOST_CMD_PARSE "selfhost-parse"
+#define KAGI_SELFHOST_CMD_CHECK "selfhost-check"
+#define KAGI_SELFHOST_CMD_EMIT "selfhost-emit"
+#define KAGI_SELFHOST_CMD_CAPIR "selfhost-capir"
+#define KAGI_SELFHOST_CMD_RUN "selfhost-run"
+
+#define KAGI_SEED_KIND_CANONICAL_SEED_KIR "canonical-seed-kir"
+
 #endif

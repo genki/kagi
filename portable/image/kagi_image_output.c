@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../common/kagi_portable_abi.h"
 #include "kagi_image_output.h"
 
 void fail(const char *message) {
@@ -115,7 +116,7 @@ static void emit_selfhost_fixed_point_json(const char *seed_kind, const char *ki
 }
 
 void emit_selfhost_bootstrap_json(const char *kir_json) {
-    emit_selfhost_fixed_point_json("canonical-seed-kir", kir_json);
+    emit_selfhost_fixed_point_json(KAGI_SEED_KIND_CANONICAL_SEED_KIR, kir_json);
 }
 
 void emit_selfhost_build_json(const char *kir_json) {
@@ -334,9 +335,9 @@ void unsupported_source(void) {
 }
 
 int is_selfhost_fixed_point_command(const char *command) {
-    return strcmp(command, "selfhost-bootstrap") == 0 ||
-           strcmp(command, "selfhost-build") == 0 ||
-           strcmp(command, "selfhost-freeze") == 0;
+    return strcmp(command, KAGI_SELFHOST_CMD_BOOTSTRAP) == 0 ||
+           strcmp(command, KAGI_SELFHOST_CMD_BUILD) == 0 ||
+           strcmp(command, KAGI_SELFHOST_CMD_FREEZE) == 0;
 }
 
 int emit_native_selfhost_command(
@@ -349,7 +350,7 @@ int emit_native_selfhost_command(
     const char *raw_analysis,
     const char *raw_artifact
 ) {
-    if (strcmp(command, "selfhost-run") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_RUN) == 0) {
         if (use_json) {
             emit_selfhost_run_payload(source_path, raw_ast, raw_hir, raw_kir, raw_artifact);
             fputc('\n', stdout);
@@ -358,22 +359,22 @@ int emit_native_selfhost_command(
         }
         return 1;
     }
-    if (strcmp(command, "selfhost-check") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_CHECK) == 0) {
         emit_selfhost_check_payload(source_path, use_json, raw_ast, raw_hir, raw_analysis);
         fputc('\n', stdout);
         return 1;
     }
-    if (strcmp(command, "selfhost-emit") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_EMIT) == 0) {
         emit_selfhost_emit_payload(source_path, raw_ast, raw_hir, raw_artifact);
         fputc('\n', stdout);
         return 1;
     }
-    if (strcmp(command, "selfhost-capir") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_CAPIR) == 0) {
         emit_selfhost_capir_payload(source_path, raw_ast, raw_hir, raw_kir, raw_artifact);
         fputc('\n', stdout);
         return 1;
     }
-    if (strcmp(command, "selfhost-parse") == 0) {
+    if (strcmp(command, KAGI_SELFHOST_CMD_PARSE) == 0) {
         printf("{\"ok\":true,\"entry\":\"parse\",\"source\":");
         emit_json_string(source_path);
         printf(",\"ast\":");
