@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRCS=(
   "$SCRIPT_DIR/kagi_canonical_image.c"
   "$SCRIPT_DIR/kagi_image_output.c"
+  "$SCRIPT_DIR/kagi_image_parser.c"
 )
 OUT="${1:-$SCRIPT_DIR/kagi-canonical-image}"
 

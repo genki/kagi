@@ -19,6 +19,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.native_runtime_build_script = cls.root / "portable" / "runtime" / "build.sh"
         cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
         cls.native_image_output_source = cls.root / "portable" / "image" / "kagi_image_output.c"
+        cls.native_image_parser_source = cls.root / "portable" / "image" / "kagi_image_parser.c"
         cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
@@ -78,6 +79,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
     def test_native_image_source_exists(self):
         source = self.native_image_source.read_text(encoding="utf-8")
         self.assertIn('#include "kagi_image_output.h"', source)
+        self.assertIn('#include "kagi_image_parser.h"', source)
         self.assertIn('is_selfhost_fixed_point_command(command)', source)
         self.assertIn('emit_native_selfhost_command(', source)
         self.assertIn('try_parse_native_function_program', source)
@@ -92,10 +94,18 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('emit_native_selfhost_command', source)
         self.assertIn('unsupported_source', source)
 
+    def test_native_image_parser_source_exists(self):
+        source = self.native_image_parser_source.read_text(encoding="utf-8")
+        self.assertIn('normalized_source_equals', source)
+        self.assertIn('try_parse_native_stmt_program', source)
+        self.assertIn('try_parse_native_function_program', source)
+        self.assertIn('free_native_function_program', source)
+
     def test_native_image_build_script_compiles_split_sources(self):
         script = self.native_image_build_script.read_text(encoding="utf-8")
         self.assertIn('kagi_canonical_image.c', script)
         self.assertIn('kagi_image_output.c', script)
+        self.assertIn('kagi_image_parser.c', script)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1103,6 +1113,125 @@ class NativeHostBoundaryTest(unittest.TestCase):
                             "kind": "call",
                             "name": "shout",
                             "args": [{"kind": "string", "value": "hello, world"}],
+                        }
+                    ],
+                },
+            )
+
+    def test_future_line_parser_native_image_can_parse_nested_function_body_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+
+            frontend_copy = tmp_path / "frontend_alias.ks"
+            frontend_copy.write_text(
+                (self.root / "examples" / "selfhost_frontend.ks").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            nested_program = tmp_path / "nested_function_shape.ksrc"
+            nested_program.write_text(
+                'fn choose(name) {\n'
+                '  let ready = eq(name, "go")\n'
+                '  if ready {\n'
+                '    print concat(name, "!")\n'
+                '  } else {\n'
+                '    print "disabled"\n'
+                '  }\n'
+                '}\n\n'
+                'call choose("go")\n',
+                encoding="utf-8",
+            )
+
+            parse = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", str(frontend_copy), str(nested_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+
+            self.assertEqual(parse.returncode, 0, parse.stderr)
+            payload = __import__("json").loads(parse.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(
+                __import__("json").loads(payload["ast"]),
+                {
+                    "kind": "program",
+                    "functions": [
+                        {
+                            "kind": "fn",
+                            "name": "choose",
+                            "params": ["name"],
+                            "body": [
+                                {
+                                    "kind": "let",
+                                    "name": "ready",
+                                    "expr": {
+                                        "kind": "eq",
+                                        "left": {"kind": "var", "name": "name"},
+                                        "right": {"kind": "string", "value": "go"},
+                                    },
+                                },
+                                {
+                                    "kind": "if_stmt",
+                                    "condition": {"kind": "var", "name": "ready"},
+                                    "then_body": [
+                                        {
+                                            "kind": "print",
+                                            "expr": {
+                                                "kind": "concat",
+                                                "left": {"kind": "var", "name": "name"},
+                                                "right": {"kind": "string", "value": "!"},
+                                            },
+                                        }
+                                    ],
+                                    "else_body": [
+                                        {
+                                            "kind": "print",
+                                            "expr": {"kind": "string", "value": "disabled"},
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                    "statements": [
+                        {
+                            "kind": "call",
+                            "name": "choose",
+                            "args": [{"kind": "string", "value": "go"}],
                         }
                     ],
                 },
