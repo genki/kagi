@@ -37,11 +37,18 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('KAGI_ENV_IMAGE', source)
         self.assertIn('KAGI_MANIFEST_RUNTIME_KIND', source)
         self.assertIn('KAGI_ENTRY_STYLE_DIRECT', source)
+        self.assertIn('KAGI_PORTABLE_RUNTIME_MANIFEST_REL', source)
+        self.assertIn('KAGI_PORTABLE_PYTHON_BIN_REL', source)
+
+    def test_portable_abi_header_documents_native_entry_contract(self):
+        source = self.portable_abi_header.read_text(encoding="utf-8")
+        self.assertIn('Native runtime entry dispatch is argv[1]-authoritative.', source)
+        self.assertIn('KAGI_ENV_ENTRY_TARGET remains exported as a compatibility/debugging mirror', source)
 
     def test_vendored_portable_launcher_keeps_python_bridge_as_compatibility_boundary(self):
         source = self.launcher_source.read_text(encoding="utf-8")
         self.assertIn('../common/kagi_portable_abi.h', source)
-        self.assertIn('kagi_runtime.env', source)
+        self.assertIn('KAGI_PORTABLE_RUNTIME_MANIFEST_REL', source)
         self.assertIn('KAGI_MANIFEST_RUNTIME_KIND', source)
         self.assertIn('KAGI_MANIFEST_RUNTIME_BIN_REL', source)
         self.assertIn('KAGI_MANIFEST_ENTRY_STYLE', source)
@@ -88,7 +95,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('missing %s\\n", KAGI_ENV_HOME', source)
         self.assertIn('failed to exec native image', source)
         self.assertIn('failed to exec native bridge python', source)
-        self.assertIn('bin/python3', source)
+        self.assertIn('KAGI_PORTABLE_PYTHON_BIN_REL', source)
         self.assertIn('"-m"', source)
 
     def test_native_image_source_exists(self):

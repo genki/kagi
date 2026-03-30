@@ -60,7 +60,7 @@ static runtime_manifest_t load_runtime_manifest(const char *dist_root) {
     memset(&manifest, 0, sizeof(manifest));
 
     char manifest_path[PATH_MAX];
-    snprintf(manifest_path, sizeof(manifest_path), "%s/app/kagi_runtime.env", dist_root);
+    snprintf(manifest_path, sizeof(manifest_path), "%s/%s", dist_root, KAGI_PORTABLE_RUNTIME_MANIFEST_REL);
 
     FILE *fp = fopen(manifest_path, "r");
     if (!fp) {

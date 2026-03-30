@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
     char *dist_root = dirname(dist_buf);
 
     char python_bin[PATH_MAX];
-    join_path_or_die(python_bin, sizeof(python_bin), dist_root, "bin/python3");
+    join_path_or_die(python_bin, sizeof(python_bin), dist_root, KAGI_PORTABLE_PYTHON_BIN_REL);
     set_env_or_die(KAGI_ENV_PYTHONPATH, image_path);
     set_env_or_die(KAGI_ENV_PYTHONNOUSERSITE, "1");
     set_env_or_die(KAGI_ENV_PYTHONDONTWRITEBYTECODE, "1");

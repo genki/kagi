@@ -167,7 +167,7 @@ launcher/runtime 間の portable ABI 名は
 
 - `portable/common/kagi_portable_abi.h`
 
-に集約しています。manifest key と env key はこの header を正本とし、launcher と native runtime の両方が同じ定数名を使います。
+に集約しています。manifest key と env key だけでなく、`app/kagi_runtime.env` や `bin/python3` のような current portable dist layout 契約もこの header を正本とし、launcher と native runtime の両方が同じ定数名を使います。
 
 さらに `portable/runtime/kagi_native_runtime.c` を追加し、`native/direct` 分岐から実際に動く C 製 runtime bridge まで入れました。これはまだ内部で Python host entry を起動しますが、launcher -> native runtime -> host entry という 2 段構成は実動しています。
 
