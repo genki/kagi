@@ -20,6 +20,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.native_image_source = cls.root / "portable" / "image" / "kagi_canonical_image.c"
         cls.native_image_output_source = cls.root / "portable" / "image" / "kagi_image_output.c"
         cls.native_image_parser_source = cls.root / "portable" / "image" / "kagi_image_parser.c"
+        cls.native_image_serializer_source = cls.root / "portable" / "image" / "kagi_image_serializer.c"
         cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
@@ -80,6 +81,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         source = self.native_image_source.read_text(encoding="utf-8")
         self.assertIn('#include "kagi_image_output.h"', source)
         self.assertIn('#include "kagi_image_parser.h"', source)
+        self.assertIn('#include "kagi_image_serializer.h"', source)
         self.assertIn('is_selfhost_fixed_point_command(command)', source)
         self.assertIn('emit_native_selfhost_command(', source)
         self.assertIn('try_parse_native_function_program', source)
@@ -101,11 +103,19 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('try_parse_native_function_program', source)
         self.assertIn('free_native_function_program', source)
 
+    def test_native_image_serializer_source_exists(self):
+        source = self.native_image_serializer_source.read_text(encoding="utf-8")
+        self.assertIn('native_stmt_program_to_parse_json', source)
+        self.assertIn('native_stmt_program_to_kir_json', source)
+        self.assertIn('native_function_program_to_parse_json', source)
+        self.assertIn('native_function_program_to_analysis_json', source)
+
     def test_native_image_build_script_compiles_split_sources(self):
         script = self.native_image_build_script.read_text(encoding="utf-8")
         self.assertIn('kagi_canonical_image.c', script)
         self.assertIn('kagi_image_output.c', script)
         self.assertIn('kagi_image_parser.c', script)
+        self.assertIn('kagi_image_serializer.c', script)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,6 +6,7 @@ SRCS=(
   "$SCRIPT_DIR/kagi_canonical_image.c"
   "$SCRIPT_DIR/kagi_image_output.c"
   "$SCRIPT_DIR/kagi_image_parser.c"
+  "$SCRIPT_DIR/kagi_image_serializer.c"
 )
 OUT="${1:-$SCRIPT_DIR/kagi-canonical-image}"
 
