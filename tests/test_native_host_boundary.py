@@ -22,6 +22,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         cls.native_image_parser_source = cls.root / "portable" / "image" / "kagi_image_parser.c"
         cls.native_image_serializer_source = cls.root / "portable" / "image" / "kagi_image_serializer.c"
         cls.native_image_eval_source = cls.root / "portable" / "image" / "kagi_image_eval.c"
+        cls.native_image_dispatch_source = cls.root / "portable" / "image" / "kagi_image_dispatch.c"
         cls.native_image_build_script = cls.root / "portable" / "image" / "build.sh"
 
     def test_vendored_portable_launcher_source_exists(self):
@@ -80,14 +81,10 @@ class NativeHostBoundaryTest(unittest.TestCase):
 
     def test_native_image_source_exists(self):
         source = self.native_image_source.read_text(encoding="utf-8")
-        self.assertIn('#include "kagi_image_output.h"', source)
-        self.assertIn('#include "kagi_image_parser.h"', source)
-        self.assertIn('#include "kagi_image_serializer.h"', source)
-        self.assertIn('#include "kagi_image_eval.h"', source)
-        self.assertIn('is_selfhost_fixed_point_command(command)', source)
-        self.assertIn('emit_native_selfhost_command(', source)
-        self.assertIn('try_parse_native_function_program', source)
-        self.assertIn('try_parse_native_stmt_program', source)
+        self.assertIn('#include "kagi_image_dispatch.h"', source)
+        self.assertIn('run_kagi_canonical_image(argc, argv)', source)
+        self.assertNotIn('try_parse_native_function_program', source)
+        self.assertNotIn('emit_native_selfhost_command(', source)
         self.assertNotIn('match_canonical_case', source)
         self.assertNotIn('rewrite_snapshot_identifiers', source)
 
@@ -119,6 +116,13 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('eval_native_stmt_program_collect_prints', source)
         self.assertIn('print_texts_to_artifact_json', source)
 
+    def test_native_image_dispatch_source_exists(self):
+        source = self.native_image_dispatch_source.read_text(encoding="utf-8")
+        self.assertIn('run_kagi_canonical_image', source)
+        self.assertIn('frontend_matches_canonical_or_kir', source)
+        self.assertIn('handle_fixed_point_command', source)
+        self.assertIn('handle_selfhost_program_command', source)
+
     def test_native_image_build_script_compiles_split_sources(self):
         script = self.native_image_build_script.read_text(encoding="utf-8")
         self.assertIn('kagi_canonical_image.c', script)
@@ -126,6 +130,7 @@ class NativeHostBoundaryTest(unittest.TestCase):
         self.assertIn('kagi_image_parser.c', script)
         self.assertIn('kagi_image_serializer.c', script)
         self.assertIn('kagi_image_eval.c', script)
+        self.assertIn('kagi_image_dispatch.c', script)
 
     def test_built_launcher_can_execute_native_runtime_bridge_from_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -783,6 +788,90 @@ class NativeHostBoundaryTest(unittest.TestCase):
             payload = __import__("json").loads(run.stdout)
             self.assertTrue(payload["ok"])
             self.assertTrue(payload["fixed_point"])
+
+    def test_selfhost_parse_kir_alias_does_not_need_canonical_frontend_source_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dist = tmp_path / "dist"
+            (dist / "bin").mkdir(parents=True)
+            (dist / "app").mkdir(parents=True)
+            (dist / "workspace").mkdir(parents=True)
+
+            launcher_bin = dist / "bin" / "kagi"
+            subprocess.run(
+                [str(self.build_script), str(launcher_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_runtime_bin = dist / "bin" / "kagi-native-runtime"
+            subprocess.run(
+                [str(self.native_runtime_build_script), str(native_runtime_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            native_image_bin = dist / "app" / "kagi-canonical-image"
+            subprocess.run(
+                [str(self.native_image_build_script), str(native_image_bin)],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            shutil.copy2(self.runtime_manifest, dist / "app" / "kagi_runtime.env")
+            shutil.copytree(self.root / "examples", dist / "workspace" / "examples")
+            os.remove(dist / "workspace" / "examples" / "selfhost_frontend.ks")
+
+            frontend_kir_alias = tmp_path / "frontend_alias.kir.json"
+            frontend_kir_alias.write_text(
+                (self.root / "examples" / "selfhost_frontend.kir.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            variant_program = tmp_path / "kir_alias_parse.ksrc"
+            variant_program.write_text(
+                'let message = concat("al", "pha")\n'
+                'print message\n',
+                encoding="utf-8",
+            )
+
+            run = subprocess.run(
+                [str(launcher_bin), "selfhost-parse", "--json", str(frontend_kir_alias), str(variant_program)],
+                cwd=dist,
+                check=False,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONHOME": "", "PYTHONPATH": ""},
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = __import__("json").loads(run.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["entry"], "parse")
+            self.assertEqual(
+                __import__("json").loads(payload["ast"]),
+                {
+                    "kind": "program",
+                    "functions": [],
+                    "statements": [
+                        {
+                            "kind": "let",
+                            "name": "message",
+                            "expr": {
+                                "kind": "concat",
+                                "left": {"kind": "string", "value": "al"},
+                                "right": {"kind": "string", "value": "pha"},
+                            },
+                        },
+                        {
+                            "kind": "print",
+                            "expr": {"kind": "var", "name": "message"},
+                        },
+                    ],
+                },
+            )
 
     def test_selfhost_bootstrap_kir_alias_does_not_need_canonical_frontend_source_file(self):
         with tempfile.TemporaryDirectory() as tmp:
